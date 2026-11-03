@@ -1,0 +1,3302 @@
+{
+  "datasets": [
+    {
+      "name": "b0149ae3",
+      "displayName": "dim_channel",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.dim_channel"
+      }
+    },
+    {
+      "name": "20a36cb1",
+      "displayName": "dim_customer",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.dim_customer"
+      }
+    },
+    {
+      "name": "32ff114f",
+      "displayName": "dim_date",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.dim_date"
+      }
+    },
+    {
+      "name": "e3602399",
+      "displayName": "dim_product",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.dim_product",
+        "dimensions": [
+          {
+            "expr": "source.*"
+          }
+        ],
+        "measures": [
+          {
+            "name": "count",
+            "expr": "COUNT(*)",
+            "comment": "Represents the total number of rows in the dataset. Use this measure to count all",
+            "displayName": "Count"
+          }
+        ]
+      }
+    },
+    {
+      "name": "34489d77",
+      "displayName": "fct_order_line",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.fct_order_line"
+      }
+    },
+    {
+      "name": "373d5de4",
+      "displayName": "mart_channel_month",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_channel_month"
+      }
+    },
+    {
+      "name": "4d4c4727",
+      "displayName": "mart_customer_bridge",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_customer_bridge",
+        "dimensions": [
+          {
+            "expr": "source.*"
+          }
+        ],
+        "measures": [
+          {
+            "name": "count",
+            "expr": "COUNT(*)",
+            "comment": "Represents the total number of rows in the dataset. Use this measure to count all",
+            "displayName": "Count"
+          }
+        ]
+      }
+    },
+    {
+      "name": "64bb2371",
+      "displayName": "mart_customer_cadence",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_customer_cadence"
+      }
+    },
+    {
+      "name": "d86b5a4d",
+      "displayName": "mart_customer_year",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_customer_year",
+        "dimensions": [
+          {
+            "expr": "source.*"
+          }
+        ],
+        "measures": [
+          {
+            "name": "count",
+            "expr": "COUNT(*)",
+            "comment": "Represents the total number of rows in the dataset. Use this measure to count all",
+            "displayName": "Count"
+          }
+        ]
+      }
+    },
+    {
+      "name": "3b2489f1",
+      "displayName": "mart_growth_anatomy",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_growth_anatomy"
+      }
+    },
+    {
+      "name": "fe434981",
+      "displayName": "mart_kpi_ytd",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_kpi_ytd",
+        "dimensions": [
+          {
+            "expr": "source.*"
+          }
+        ],
+        "measures": [
+          {
+            "name": "count",
+            "expr": "COUNT(*)",
+            "comment": "Represents the total number of rows in the dataset. Use this measure to count all",
+            "displayName": "Count"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a98539cb",
+      "displayName": "mart_pvm_bridge",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_pvm_bridge"
+      }
+    },
+    {
+      "name": "54060ba9",
+      "displayName": "mart_pvm_sku_year",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.mart_pvm_sku_year"
+      }
+    },
+    {
+      "name": "6b363629",
+      "displayName": "metric_catalog",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.metric_catalog"
+      }
+    },
+    {
+      "name": "c56c75a9",
+      "displayName": "ref_channel_events",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.ref_channel_events"
+      }
+    },
+    {
+      "name": "b4107d03",
+      "displayName": "v_cadence_backtest",
+      "config": {
+        "version": "1.1",
+        "source": "lindedata.gold.v_cadence_backtest",
+        "dimensions": [
+          {
+            "expr": "source.*"
+          }
+        ],
+        "measures": [
+          {
+            "name": "count",
+            "expr": "COUNT(*)",
+            "comment": "Represents the total number of rows in the dataset. Use this measure to count all",
+            "displayName": "Count"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wf_growth",
+      "displayName": "wf_growth",
+      "queryLines": [
+        "SELECT\n",
+        "  concat(base_year, ' to ', current_year) AS pair_label,\n",
+        "  base_year,\n",
+        "  current_year,\n",
+        "  step_no,\n",
+        "  step,\n",
+        "  amount\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      base_year,\n",
+        "      current_year,\n",
+        "      stack(\n",
+        "        4,\n",
+        "        1,\n",
+        "        concat('1. Revenue ', base_year),\n",
+        "        revenue_base,\n",
+        "        2,\n",
+        "        '2. Top customer',\n",
+        "        bar_top_customer,\n",
+        "        3,\n",
+        "        '3. Helium, other customers',\n",
+        "        bar_helium_excl_top_customer,\n",
+        "        4,\n",
+        "        '4. Rest of portfolio',\n",
+        "        bar_rest_of_portfolio\n",
+        "      ) AS (step_no, step, amount)\n",
+        "    FROM\n",
+        "      `lindedata`.`gold`.`mart_growth_anatomy`\n",
+        "  )\n",
+        "ORDER BY\n",
+        "  base_year,\n",
+        "  current_year,\n",
+        "  step_no"
+      ]
+    },
+    {
+      "name": "channel_events",
+      "displayName": "channel_events",
+      "queryLines": [
+        "SELECT\n",
+        "  event_month,\n",
+        "  channel,\n",
+        "  event,\n",
+        "  evidence,\n",
+        "  status\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`ref_channel_events`\n",
+        "ORDER BY\n",
+        "  event_month"
+      ]
+    },
+    {
+      "name": "kpi_year",
+      "displayName": "kpi_year",
+      "queryLines": [
+        "SELECT\n",
+        "  CAST(year AS STRING) AS year_label,\n",
+        "  year,\n",
+        "  window_end,\n",
+        "  cylinders,\n",
+        "  revenue,\n",
+        "  orders,\n",
+        "  customers,\n",
+        "  price_per_cylinder,\n",
+        "  idx_cylinders,\n",
+        "  idx_revenue,\n",
+        "  idx_price,\n",
+        "  idx_customers,\n",
+        "  revenue_yoy_pct,\n",
+        "  revenue_full_year\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_kpi_ytd`\n",
+        "ORDER BY\n",
+        "  year"
+      ]
+    },
+    {
+      "name": "wf_customers",
+      "displayName": "wf_customers",
+      "queryLines": [
+        "SELECT\n",
+        "  concat(base_year, ' to ', current_year) AS pair_label,\n",
+        "  base_year,\n",
+        "  current_year,\n",
+        "  step_no,\n",
+        "  step,\n",
+        "  amount\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      base_year,\n",
+        "      current_year,\n",
+        "      stack(\n",
+        "        6,\n",
+        "        1,\n",
+        "        concat('1. Cylinders ', base_year),\n",
+        "        cylinders_start,\n",
+        "        2,\n",
+        "        '2. Lost customers',\n",
+        "        cylinders_lost,\n",
+        "        3,\n",
+        "        '3. New customers',\n",
+        "        cylinders_new,\n",
+        "        4,\n",
+        "        '4. Win-backs',\n",
+        "        cylinders_winback,\n",
+        "        5,\n",
+        "        '5. Retained, buying more',\n",
+        "        cylinders_retained_up,\n",
+        "        6,\n",
+        "        '6. Retained, buying less',\n",
+        "        cylinders_retained_down\n",
+        "      ) AS (step_no, step, amount)\n",
+        "    FROM\n",
+        "      `lindedata`.`gold`.`mart_customer_bridge`\n",
+        "  )\n",
+        "ORDER BY\n",
+        "  base_year,\n",
+        "  current_year,\n",
+        "  step_no"
+      ]
+    },
+    {
+      "name": "kpi_latest",
+      "displayName": "kpi_latest",
+      "queryLines": [
+        "WITH k AS (\n",
+        "  SELECT\n",
+        "    year,\n",
+        "    window_end,\n",
+        "    CAST(revenue AS DOUBLE) AS revenue,\n",
+        "    CAST(cylinders AS DOUBLE) AS cylinders,\n",
+        "    CAST(price_per_cylinder AS DOUBLE) AS price_per_cylinder,\n",
+        "    CAST(customers AS DOUBLE) AS customers\n",
+        "  FROM\n",
+        "    `lindedata`.`gold`.`mart_kpi_ytd`\n",
+        "),\n",
+        "c AS (\n",
+        "  SELECT\n",
+        "    *\n",
+        "  FROM\n",
+        "    k\n",
+        "  WHERE\n",
+        "    year\n",
+        "      = (\n",
+        "        SELECT\n",
+        "          MAX(year)\n",
+        "        FROM\n",
+        "          k\n",
+        "      )\n",
+        "),\n",
+        "p AS (\n",
+        "  SELECT\n",
+        "    *\n",
+        "  FROM\n",
+        "    k\n",
+        "  WHERE\n",
+        "    year\n",
+        "      = (\n",
+        "        SELECT\n",
+        "          MAX(year)\n",
+        "        FROM\n",
+        "          k\n",
+        "      )\n",
+        "        - 1\n",
+        "),\n",
+        "f AS (\n",
+        "  SELECT\n",
+        "    *\n",
+        "  FROM\n",
+        "    k\n",
+        "  WHERE\n",
+        "    year\n",
+        "      = (\n",
+        "        SELECT\n",
+        "          MIN(year)\n",
+        "        FROM\n",
+        "          k\n",
+        "      )\n",
+        ")\n",
+        "SELECT\n",
+        "  c.year AS current_year,\n",
+        "  c.window_end,\n",
+        "  c.revenue,\n",
+        "  c.cylinders,\n",
+        "  c.price_per_cylinder,\n",
+        "  c.customers,\n",
+        "  concat(\n",
+        "    format_string('%+.1f%%', 100 * (c.revenue / NULLIF(p.revenue, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    p.year,\n",
+        "    ' | ',\n",
+        "    format_string('%+.1f%%', 100 * (c.revenue / NULLIF(f.revenue, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    f.year\n",
+        "  ) AS revenue_note,\n",
+        "  concat(\n",
+        "    format_string('%+.1f%%', 100 * (c.cylinders / NULLIF(p.cylinders, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    p.year,\n",
+        "    ' | ',\n",
+        "    format_string('%+.1f%%', 100 * (c.cylinders / NULLIF(f.cylinders, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    f.year\n",
+        "  ) AS cylinders_note,\n",
+        "  concat(\n",
+        "    format_string('%+.1f%%', 100 * (c.price_per_cylinder / NULLIF(p.price_per_cylinder, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    p.year,\n",
+        "    ' | ',\n",
+        "    format_string('%+.1f%%', 100 * (c.price_per_cylinder / NULLIF(f.price_per_cylinder, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    f.year\n",
+        "  ) AS price_note,\n",
+        "  concat(\n",
+        "    format_string('%+.1f%%', 100 * (c.customers / NULLIF(p.customers, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    p.year,\n",
+        "    ' | ',\n",
+        "    format_string('%+.1f%%', 100 * (c.customers / NULLIF(f.customers, 0) - 1)),\n",
+        "    ' vs ',\n",
+        "    f.year\n",
+        "  ) AS customers_note\n",
+        "FROM\n",
+        "  c CROSS JOIN p CROSS JOIN f"
+      ]
+    },
+    {
+      "name": "channel_kpi",
+      "displayName": "channel_kpi",
+      "queryLines": [
+        "SELECT\n",
+        "  year(month_start) AS channel_year,\n",
+        "  ROUND(\n",
+        "    100.0\n",
+        "      * SUM(\n",
+        "        CASE\n",
+        "          WHEN NOT is_attributed THEN orders\n",
+        "        END\n",
+        "      )\n",
+        "      / NULLIF(SUM(orders), 0),\n",
+        "    1\n",
+        "  ) AS unknown_orders_share_pct,\n",
+        "  ROUND(\n",
+        "    100.0\n",
+        "      * SUM(\n",
+        "        CASE\n",
+        "          WHEN NOT is_attributed THEN revenue\n",
+        "        END\n",
+        "      )\n",
+        "      / NULLIF(SUM(revenue), 0),\n",
+        "    1\n",
+        "  ) AS unknown_revenue_share_pct\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_channel_month`\n",
+        "WHERE\n",
+        "  year(month_start)\n",
+        "    = (\n",
+        "      SELECT\n",
+        "        MAX(year(month_start))\n",
+        "      FROM\n",
+        "        `lindedata`.`gold`.`mart_channel_month`\n",
+        "    )\n",
+        "GROUP BY\n",
+        "  year(month_start)"
+      ]
+    },
+    {
+      "name": "wf_pvm",
+      "displayName": "wf_pvm",
+      "queryLines": [
+        "SELECT\n",
+        "  concat(base_year, ' to ', current_year) AS pair_label,\n",
+        "  base_year,\n",
+        "  current_year,\n",
+        "  step_no,\n",
+        "  step,\n",
+        "  amount\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      base_year,\n",
+        "      current_year,\n",
+        "      stack(\n",
+        "        4,\n",
+        "        1,\n",
+        "        concat('1. Revenue ', base_year),\n",
+        "        revenue_base,\n",
+        "        2,\n",
+        "        '2. Volume',\n",
+        "        volume_effect,\n",
+        "        3,\n",
+        "        '3. Mix',\n",
+        "        mix_effect,\n",
+        "        4,\n",
+        "        '4. Price',\n",
+        "        price_effect\n",
+        "      ) AS (step_no, step, amount)\n",
+        "    FROM\n",
+        "      `lindedata`.`gold`.`mart_pvm_bridge`\n",
+        "  )\n",
+        "ORDER BY\n",
+        "  base_year,\n",
+        "  current_year,\n",
+        "  step_no"
+      ]
+    },
+    {
+      "name": "channel_month",
+      "displayName": "channel_month",
+      "queryLines": [
+        "SELECT\n",
+        "  year_month,\n",
+        "  month_start,\n",
+        "  channel_name,\n",
+        "  is_attributed,\n",
+        "  orders,\n",
+        "  customers,\n",
+        "  cylinders,\n",
+        "  revenue,\n",
+        "  share_of_month_orders_pct\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_channel_month`"
+      ]
+    },
+    {
+      "name": "overdue_now",
+      "displayName": "overdue_now",
+      "queryLines": [
+        "SELECT\n",
+        "  customer_id,\n",
+        "  last_order_date,\n",
+        "  order_days,\n",
+        "  median_gap_days,\n",
+        "  silent_days,\n",
+        "  ROUND(silent_days / NULLIF(median_gap_days, 0), 1) AS times_own_rhythm,\n",
+        "  revenue_24m\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_customer_cadence`\n",
+        "WHERE\n",
+        "  scope = 'current'\n",
+        "  AND is_overdue\n",
+        "ORDER BY\n",
+        "  revenue_24m DESC"
+      ]
+    },
+    {
+      "name": "pair_summary",
+      "displayName": "pair_summary",
+      "queryLines": [
+        "SELECT\n",
+        "  concat(p.base_year, ' to ', p.current_year) AS pair_label,\n",
+        "  p.base_year,\n",
+        "  p.current_year,\n",
+        "  p.volume_effect,\n",
+        "  p.mix_effect,\n",
+        "  p.price_effect,\n",
+        "  p.price_offsets_volume_loss_pct,\n",
+        "  g.revenue_delta,\n",
+        "  g.growth_pct,\n",
+        "  g.top_customer_id,\n",
+        "  g.top_customer_share_of_growth_pct,\n",
+        "  g.growth_ex_top_customer_pct,\n",
+        "  g.growth_ex_helium_pct,\n",
+        "  c.customers_start,\n",
+        "  c.customers_lost,\n",
+        "  c.customers_new,\n",
+        "  c.customers_winback,\n",
+        "  c.customers_end,\n",
+        "  c.retention_pct,\n",
+        "  c.cylinders_lost,\n",
+        "  c.cylinders_new,\n",
+        "  c.cylinders_winback,\n",
+        "  c.cylinders_retained_up,\n",
+        "  c.cylinders_retained_down\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_pvm_bridge` p\n",
+        "    JOIN `lindedata`.`gold`.`mart_growth_anatomy` g\n",
+        "      ON g.base_year = p.base_year\n",
+        "      AND g.current_year = p.current_year\n",
+        "    JOIN `lindedata`.`gold`.`mart_customer_bridge` c\n",
+        "      ON c.base_year = p.base_year\n",
+        "      AND c.current_year = p.current_year"
+      ]
+    },
+    {
+      "name": "new_customers",
+      "displayName": "new_customers",
+      "queryLines": [
+        "SELECT\n",
+        "  CAST(year AS STRING) AS year_label,\n",
+        "  year,\n",
+        "  SUM(CAST(is_new_24m AS INT)) AS new_customers_24m,\n",
+        "  COUNT(*) AS active_customers,\n",
+        "  ROUND(100.0 * SUM(CAST(is_new_24m AS INT)) / NULLIF(COUNT(*), 0), 1) AS new_share_pct\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_customer_year`\n",
+        "WHERE\n",
+        "  is_new_24m IS NOT NULL\n",
+        "GROUP BY\n",
+        "  year\n",
+        "ORDER BY\n",
+        "  year"
+      ]
+    },
+    {
+      "name": "kpi_index",
+      "displayName": "kpi_index",
+      "queryLines": [
+        "SELECT\n",
+        "  CAST(year AS STRING) AS year_label,\n",
+        "  metric,\n",
+        "  index_value\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      year,\n",
+        "      stack(\n",
+        "        4,\n",
+        "        'Cylinders',\n",
+        "        CAST(idx_cylinders AS DOUBLE),\n",
+        "        'Revenue',\n",
+        "        CAST(idx_revenue AS DOUBLE),\n",
+        "        'Price per cylinder',\n",
+        "        CAST(idx_price AS DOUBLE),\n",
+        "        'Active customers',\n",
+        "        CAST(idx_customers AS DOUBLE)\n",
+        "      ) AS (metric, index_value)\n",
+        "    FROM\n",
+        "      `lindedata`.`gold`.`mart_kpi_ytd`\n",
+        "  )\n",
+        "ORDER BY\n",
+        "  year,\n",
+        "  metric"
+      ]
+    },
+    {
+      "name": "backtest",
+      "displayName": "backtest",
+      "queryLines": [
+        "SELECT\n",
+        "  CASE\n",
+        "    WHEN is_overdue THEN 'Flagged overdue'\n",
+        "    ELSE 'Not flagged'\n",
+        "  END AS customer_group,\n",
+        "  COUNT(*) AS customers,\n",
+        "  SUM(CAST(returned_next_12m AS INT)) AS returned,\n",
+        "  ROUND(100.0 * AVG(CAST(returned_next_12m AS INT)), 1) AS returned_pct\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_customer_cadence`\n",
+        "WHERE\n",
+        "  scope = 'backtest'\n",
+        "GROUP BY\n",
+        "  is_overdue\n",
+        "ORDER BY\n",
+        "  is_overdue DESC"
+      ]
+    },
+    {
+      "name": "pvm_sku",
+      "displayName": "pvm_sku",
+      "queryLines": [
+        "SELECT\n",
+        "  concat(s.base_year, ' to ', s.current_year) AS pair_label,\n",
+        "  s.base_year,\n",
+        "  s.current_year,\n",
+        "  s.product_id,\n",
+        "  p.product_description,\n",
+        "  p.product_supergroup,\n",
+        "  p.gas,\n",
+        "  p.size_liters,\n",
+        "  s.cylinders_base,\n",
+        "  s.cylinders_current,\n",
+        "  s.price_base,\n",
+        "  s.price_current,\n",
+        "  s.volume_effect,\n",
+        "  s.mix_effect,\n",
+        "  s.price_effect\n",
+        "FROM\n",
+        "  `lindedata`.`gold`.`mart_pvm_sku_year` s\n",
+        "    JOIN `lindedata`.`gold`.`dim_product` p\n",
+        "      ON p.product_id = s.product_id"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "6f9ddbf4",
+      "displayName": "1 - Where we stand",
+      "layout": [
+        {
+          "widget": {
+            "name": "intro_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Where do sales stand?\n",
+                "\n",
+                "Revenue, cylinders, price and customers, 2017 to 2022. Every year is cut at Jan 1 to Nov 21."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi_latest",
+                  "fields": [
+                    {
+                      "name": "sum(revenue)",
+                      "expression": "SUM(`revenue`)"
+                    },
+                    {
+                      "name": "revenue_note",
+                      "expression": "`revenue_note`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Revenue, Jan 1 to Nov 21 2022 (EUR)",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(revenue)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }} ({{ revenue_note }})",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_cylinders",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi_latest",
+                  "fields": [
+                    {
+                      "name": "sum(cylinders)",
+                      "expression": "SUM(`cylinders`)"
+                    },
+                    {
+                      "name": "cylinders_note",
+                      "expression": "`cylinders_note`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Cylinders ordered",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(cylinders)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }} ({{ cylinders_note }})",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_price",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi_latest",
+                  "fields": [
+                    {
+                      "name": "avg(price_per_cylinder)",
+                      "expression": "AVG(`price_per_cylinder`)"
+                    },
+                    {
+                      "name": "price_note",
+                      "expression": "`price_note`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Price per cylinder (EUR)",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg(price_per_cylinder)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }} ({{ price_note }})",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_customers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi_latest",
+                  "fields": [
+                    {
+                      "name": "sum(customers)",
+                      "expression": "SUM(`customers`)"
+                    },
+                    {
+                      "name": "customers_note",
+                      "expression": "`customers_note`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Active customers",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(customers)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }} ({{ customers_note }})",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "index_lines",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi_index",
+                  "fields": [
+                    {
+                      "name": "metric",
+                      "expression": "`metric`"
+                    },
+                    {
+                      "name": "year_label",
+                      "expression": "`year_label`"
+                    },
+                    {
+                      "name": "sum(index_value)",
+                      "expression": "SUM(`index_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Price up 44%, cylinders down 36% since 2017: revenue ends 7.5% lower",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "year_label",
+                  "axis": {
+                    "title": "Year"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(index_value)",
+                  "axis": {
+                    "title": "Index (2017 = 100)"
+                  },
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 50
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "metric",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Cylinders",
+                        "color": "#8A9299"
+                      },
+                      {
+                        "value": "Revenue",
+                        "color": "#1F4E79"
+                      },
+                      {
+                        "value": "Price per cylinder",
+                        "color": "#17A2B8"
+                      },
+                      {
+                        "value": "Active customers",
+                        "color": "#E8862D"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "cylinders_price_combo",
+            "queries": [
+              {
+                "name": "combo_primary_1",
+                "query": {
+                  "datasetName": "kpi_year",
+                  "fields": [
+                    {
+                      "name": "year_label",
+                      "expression": "`year_label`"
+                    },
+                    {
+                      "name": "sum(cylinders)",
+                      "expression": "SUM(`cylinders`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "combo_secondary_1",
+                "query": {
+                  "datasetName": "kpi_year",
+                  "fields": [
+                    {
+                      "name": "year_label",
+                      "expression": "`year_label`"
+                    },
+                    {
+                      "name": "avg(price_per_cylinder)",
+                      "expression": "AVG(`price_per_cylinder`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Fewer cylinders every year since 2018, at a higher price every year",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "year_label",
+                  "axis": {
+                    "title": "Year"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "primary": {
+                    "axis": {
+                      "title": "Cylinders"
+                    },
+                    "scale": {
+                      "type": "quantitative"
+                    },
+                    "layers": [
+                      {
+                        "mark": {
+                          "colors": [
+                            "#8A9299"
+                          ]
+                        },
+                        "visual": "bar",
+                        "encodings": {
+                          "value": {
+                            "fieldName": "sum(cylinders)",
+                            "displayName": "Cylinders"
+                          }
+                        },
+                        "queryName": "combo_primary_1"
+                      }
+                    ]
+                  },
+                  "secondary": {
+                    "axis": {
+                      "title": "EUR per cylinder"
+                    },
+                    "scale": {
+                      "type": "quantitative"
+                    },
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    },
+                    "layers": [
+                      {
+                        "mark": {
+                          "colors": [
+                            "#17A2B8"
+                          ]
+                        },
+                        "visual": "line",
+                        "encodings": {
+                          "value": {
+                            "fieldName": "avg(price_per_cylinder)",
+                            "displayName": "Price per cylinder"
+                          }
+                        },
+                        "queryName": "combo_secondary_1"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 10,
+            "width": 6,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "why_window_note",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Why Jan 1 to Nov 21: full-year 2021 revenue was EUR 4.43M, while 2022 so far (to Nov 21) is EUR 4.08M. Compared on the same window, 2021 was EUR 3.96M, so 2022 is +3.1%. Comparing 2022 with the full year would show a false drop of 7.8%."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 19,
+            "width": 12,
+            "height": 3
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "pvm",
+      "displayName": "2 - Price, volume, mix",
+      "layout": [
+        {
+          "widget": {
+            "name": "filter_compare_years",
+            "queries": [
+              {
+                "name": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025241ecc8c9c46ad4c426c2c_pair_label",
+                "query": {
+                  "datasetName": "wf_pvm",
+                  "fields": [
+                    {
+                      "name": "pair_label",
+                      "expression": "`pair_label`"
+                    },
+                    {
+                      "name": "pair_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025e2150c83afa8c58ee6935a_pair_label",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "pair_label",
+                      "expression": "`pair_label`"
+                    },
+                    {
+                      "name": "pair_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73026a615d887089bfa35e5b33a_pair_label",
+                "query": {
+                  "datasetName": "pvm_sku",
+                  "fields": [
+                    {
+                      "name": "pair_label",
+                      "expression": "`pair_label`"
+                    },
+                    {
+                      "name": "pair_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "disallowAll": true,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "2017 to 2022"
+                      }
+                    ]
+                  }
+                }
+              },
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Compare years"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "pair_label",
+                    "queryName": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025241ecc8c9c46ad4c426c2c_pair_label"
+                  },
+                  {
+                    "fieldName": "pair_label",
+                    "queryName": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025e2150c83afa8c58ee6935a_pair_label"
+                  },
+                  {
+                    "fieldName": "pair_label",
+                    "queryName": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73026a615d887089bfa35e5b33a_pair_label"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "key_message",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Key message: 2017 to 2022, revenue is down 7.5%, but the bridge shows price is doing all the work: EUR +1.58M from price, against EUR -1.57M lost to volume and mix. Price offsets 72.7% of the volume loss; the remaining 27.3% is the revenue gap. At SKU level, 6 of the 16 traded SKUs lost price."
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 9,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "pvm_waterfall",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "wf_pvm",
+                  "fields": [
+                    {
+                      "name": "step",
+                      "expression": "`step`"
+                    },
+                    {
+                      "name": "sum(amount)",
+                      "expression": "SUM(`amount`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Revenue bridge: volume, mix and price (EUR)",
+                  "fields": []
+                }
+              },
+              "mark": {
+                "colors": [
+                  "#1F4E79"
+                ]
+              },
+              "total": {
+                "color": "#1F4E79",
+                "displayValue": "Revenue, current year",
+                "hide": false,
+                "label": {
+                  "show": true
+                }
+              },
+              "version": 3,
+              "widgetType": "waterfall",
+              "encodings": {
+                "x": {
+                  "fieldName": "step",
+                  "axis": {
+                    "title": "Bridge step"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(amount)",
+                  "format": {
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 12,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_offset",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(price_offsets_volume_loss_pct)",
+                      "expression": "SUM(`price_offsets_volume_loss_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Price offsets the volume loss by"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(price_offsets_volume_loss_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "price_effect_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pvm_sku",
+                  "fields": [
+                    {
+                      "name": "sum(price_effect)",
+                      "expression": "SUM(`price_effect`)"
+                    },
+                    {
+                      "name": "product_description",
+                      "expression": "`product_description`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Where the price wins and losses sit (EUR per SKU)",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#17A2B8"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(price_effect)",
+                  "axis": {
+                    "title": "Price effect (EUR)"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "product_description",
+                  "axis": {
+                    "title": "Product"
+                  },
+                  "scale": {
+                    "categorySize": {
+                      "number": 16,
+                      "type": "number-of-categories"
+                    },
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 14,
+            "width": 9,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "sku_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pvm_sku",
+                  "fields": [
+                    {
+                      "name": "product_description",
+                      "expression": "`product_description`"
+                    },
+                    {
+                      "name": "size_liters",
+                      "expression": "`size_liters`"
+                    },
+                    {
+                      "name": "cylinders_base",
+                      "expression": "`cylinders_base`"
+                    },
+                    {
+                      "name": "cylinders_current",
+                      "expression": "`cylinders_current`"
+                    },
+                    {
+                      "name": "price_base",
+                      "expression": "`price_base`"
+                    },
+                    {
+                      "name": "price_current",
+                      "expression": "`price_current`"
+                    },
+                    {
+                      "name": "volume_effect",
+                      "expression": "`volume_effect`"
+                    },
+                    {
+                      "name": "mix_effect",
+                      "expression": "`mix_effect`"
+                    },
+                    {
+                      "name": "price_effect",
+                      "expression": "`price_effect`"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "`price_effect`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "SKU detail: cylinders, price, and PVM effects"
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "product_description",
+                    "displayName": "Product"
+                  },
+                  {
+                    "fieldName": "size_liters"
+                  },
+                  {
+                    "fieldName": "cylinders_base"
+                  },
+                  {
+                    "fieldName": "cylinders_current"
+                  },
+                  {
+                    "fieldName": "price_base",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 2,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    }
+                  },
+                  {
+                    "fieldName": "price_current",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 2,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    }
+                  },
+                  {
+                    "fieldName": "volume_effect",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 2,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "style": {
+                      "rules": [
+                        {
+                          "condition": {
+                            "operand": {
+                              "type": "data-value",
+                              "value": "0"
+                            },
+                            "operator": "<"
+                          },
+                          "foregroundColor": "#C0392B"
+                        }
+                      ],
+                      "type": "basic"
+                    }
+                  },
+                  {
+                    "fieldName": "mix_effect",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 2,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "style": {
+                      "rules": [
+                        {
+                          "condition": {
+                            "operand": {
+                              "type": "data-value",
+                              "value": "0"
+                            },
+                            "operator": "<"
+                          },
+                          "foregroundColor": "#C0392B"
+                        }
+                      ],
+                      "type": "basic"
+                    }
+                  },
+                  {
+                    "fieldName": "price_effect",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 2,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "style": {
+                      "rules": [
+                        {
+                          "condition": {
+                            "operand": {
+                              "type": "data-value",
+                              "value": "0"
+                            },
+                            "operator": "<"
+                          },
+                          "foregroundColor": "#C0392B"
+                        }
+                      ],
+                      "type": "basic"
+                    }
+                  }
+                ],
+                "rowOrder": [
+                  {
+                    "by": "column-reversed",
+                    "field": {
+                      "index": 8
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 22,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "growth",
+      "displayName": "3 - Anatomy of growth",
+      "layout": [
+        {
+          "widget": {
+            "name": "filter_compare_years",
+            "queries": [
+              {
+                "name": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73023be14b391b6154e55f649ac_pair_label",
+                "query": {
+                  "datasetName": "wf_growth",
+                  "fields": [
+                    {
+                      "name": "pair_label",
+                      "expression": "`pair_label`"
+                    },
+                    {
+                      "name": "pair_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025e2150c83afa8c58ee6935a_pair_label",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "pair_label",
+                      "expression": "`pair_label`"
+                    },
+                    {
+                      "name": "pair_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "disallowAll": true,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "2021 to 2022"
+                      }
+                    ]
+                  }
+                }
+              },
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Compare years"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "pair_label",
+                    "queryName": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73023be14b391b6154e55f649ac_pair_label"
+                  },
+                  {
+                    "fieldName": "pair_label",
+                    "queryName": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025e2150c83afa8c58ee6935a_pair_label"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "key_message",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Key message: of the EUR +123K growth from 2021 to 2022 (+3.1%), EUR +99K (80.6%) came from one customer. Excluding that customer, growth was +0.6%. Excluding helium, the portfolio actually shrank by -4.2%. 2021 to 2022 is one customer's story, not a broad recovery."
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 9,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "growth_waterfall",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "wf_growth",
+                  "fields": [
+                    {
+                      "name": "step",
+                      "expression": "`step`"
+                    },
+                    {
+                      "name": "sum(amount)",
+                      "expression": "SUM(`amount`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Growth anatomy 2021 to 2022: top customer, helium, rest of portfolio (EUR)"
+              },
+              "mark": {
+                "colors": [
+                  "#1F4E79"
+                ]
+              },
+              "total": {
+                "color": "#1F4E79",
+                "displayValue": "Revenue, current year",
+                "hide": false,
+                "label": {
+                  "show": true
+                }
+              },
+              "version": 3,
+              "widgetType": "waterfall",
+              "encodings": {
+                "x": {
+                  "fieldName": "step",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(amount)",
+                  "format": {
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 12,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_growth_pct",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(growth_pct)",
+                      "expression": "SUM(`growth_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue growth 2021 to 2022"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(growth_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_top_customer_share",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(top_customer_share_of_growth_pct)",
+                      "expression": "SUM(`top_customer_share_of_growth_pct`)"
+                    },
+                    {
+                      "name": "top_customer_id",
+                      "expression": "`top_customer_id`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Top customer share of the growth"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(top_customer_share_of_growth_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}% (customer {{ top_customer_id }})",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_ex_top_customer",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(growth_ex_top_customer_pct)",
+                      "expression": "SUM(`growth_ex_top_customer_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Growth excluding the top customer"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(growth_ex_top_customer_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_ex_helium",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(growth_ex_helium_pct)",
+                      "expression": "SUM(`growth_ex_helium_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Growth excluding helium"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(growth_ex_helium_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "customers",
+      "displayName": "4 - Customers",
+      "layout": [
+        {
+          "widget": {
+            "name": "filter_compare_years",
+            "queries": [
+              {
+                "name": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d730249317bfa28da9f1068806ad_pair_label",
+                "query": {
+                  "datasetName": "wf_customers",
+                  "fields": [
+                    {
+                      "name": "pair_label",
+                      "expression": "`pair_label`"
+                    },
+                    {
+                      "name": "pair_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025e2150c83afa8c58ee6935a_pair_label",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "pair_label",
+                      "expression": "`pair_label`"
+                    },
+                    {
+                      "name": "pair_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "disallowAll": true,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "2021 to 2022"
+                      }
+                    ]
+                  }
+                }
+              },
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Compare years"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "pair_label",
+                    "queryName": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d730249317bfa28da9f1068806ad_pair_label"
+                  },
+                  {
+                    "fieldName": "pair_label",
+                    "queryName": "dashboards/01f1d72dd54b1ef8856c0727535a89db/datasets/01f1d73025e2150c83afa8c58ee6935a_pair_label"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "key_message",
+            "multilineTextboxSpec": {
+              "lines": [
+                "2021 to 2022: the volume loss comes mostly from customers who stay but buy less (-15.7k cylinders), about three times the cylinders lost with customers who left (-5.1k). New customers keep falling: 618 in 2019, 456 in 2022 (-26%). New = no order in the previous 24 months. Message shown for the default selection."
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 9,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "cylinder_bridge",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "wf_customers",
+                  "fields": [
+                    {
+                      "name": "step",
+                      "expression": "`step`"
+                    },
+                    {
+                      "name": "sum(amount)",
+                      "expression": "SUM(`amount`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Cylinder bridge by customer behavior"
+              },
+              "mark": {
+                "colors": [
+                  "#8A9299"
+                ]
+              },
+              "total": {
+                "color": "#8A9299",
+                "displayValue": "Cylinders, current year",
+                "hide": false,
+                "label": {
+                  "show": true
+                }
+              },
+              "version": 3,
+              "widgetType": "waterfall",
+              "encodings": {
+                "x": {
+                  "fieldName": "step",
+                  "axis": {
+                    "title": "Customer behavior step"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(amount)",
+                  "axis": {
+                    "title": "Cylinders"
+                  },
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 12,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_retention",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(retention_pct)",
+                      "expression": "SUM(`retention_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Customer retention"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(retention_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_lost",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(customers_lost)",
+                      "expression": "SUM(`customers_lost`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Customers lost"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(customers_lost)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_new",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(customers_new)",
+                      "expression": "SUM(`customers_new`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "New customers"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(customers_new)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_winback",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(customers_winback)",
+                      "expression": "SUM(`customers_winback`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Win-back customers"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(customers_winback)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 14,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "new_customers_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "new_customers",
+                  "fields": [
+                    {
+                      "name": "year_label",
+                      "expression": "`year_label`"
+                    },
+                    {
+                      "name": "sum(new_customers_24m)",
+                      "expression": "SUM(`new_customers_24m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "New customers per year (no order in the previous 24 months)",
+                "description": "2017 and 2018 are absent on purpose: there is no 24-month history yet."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#E67E22"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "year_label",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(new_customers_24m)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "actions",
+      "displayName": "5 - Action list",
+      "layout": [
+        {
+          "widget": {
+            "name": "key_message",
+            "multilineTextboxSpec": {
+              "lines": [
+                "480 customers have been silent for more than twice their own ordering rhythm. They hold EUR 937k of revenue over the last 24 months. A year ago the same rule flagged 552 customers: 63% came back within 12 months, against 93% of the others. Use it as a call list, not as a churn forecast."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_overdue_count",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "overdue_now",
+                  "fields": [
+                    {
+                      "name": "count(customer_id)",
+                      "expression": "COUNT(`customer_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Overdue customers"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(customer_id)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_overdue_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "overdue_now",
+                  "fields": [
+                    {
+                      "name": "sum(revenue_24m)",
+                      "expression": "SUM(`revenue_24m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "24-month revenue of overdue customers (EUR)"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(revenue_24m)",
+                  "format": {
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 3,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "backtest_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "backtest",
+                  "fields": [
+                    {
+                      "name": "customer_group",
+                      "expression": "`customer_group`"
+                    },
+                    {
+                      "name": "sum(returned_pct)",
+                      "expression": "SUM(`returned_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Backtest: share that ordered again within 12 months"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "customer_group",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(returned_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "scale": {
+                    "domain": {
+                      "max": 100,
+                      "min": 0,
+                      "type": "custom"
+                    },
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "customer_group",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#C0392B",
+                        "value": "Flagged overdue"
+                      },
+                      {
+                        "color": "#8A9299",
+                        "value": "Not flagged"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": true,
+                  "text": {
+                    "fieldName": "sum(returned_pct)",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 1,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "formatTemplate": "{{ @formatted }}%"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 12,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "overdue_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "overdue_now",
+                  "fields": [
+                    {
+                      "name": "customer_id",
+                      "expression": "`customer_id`"
+                    },
+                    {
+                      "name": "last_order_date",
+                      "expression": "`last_order_date`"
+                    },
+                    {
+                      "name": "order_days",
+                      "expression": "`order_days`"
+                    },
+                    {
+                      "name": "median_gap_days",
+                      "expression": "`median_gap_days`"
+                    },
+                    {
+                      "name": "silent_days",
+                      "expression": "`silent_days`"
+                    },
+                    {
+                      "name": "times_own_rhythm",
+                      "expression": "`times_own_rhythm`"
+                    },
+                    {
+                      "name": "revenue_24m",
+                      "expression": "`revenue_24m`"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "`revenue_24m`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Customers to call first (largest 24-month revenue first)"
+              },
+              "rowsPerPage": 25,
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "customer_id"
+                  },
+                  {
+                    "fieldName": "last_order_date",
+                    "format": {
+                      "date": "year-month-day",
+                      "type": "date"
+                    }
+                  },
+                  {
+                    "fieldName": "order_days"
+                  },
+                  {
+                    "fieldName": "median_gap_days"
+                  },
+                  {
+                    "fieldName": "silent_days"
+                  },
+                  {
+                    "fieldName": "times_own_rhythm",
+                    "style": {
+                      "rules": [
+                        {
+                          "backgroundColor": "#C0392B",
+                          "condition": {
+                            "operand": {
+                              "type": "data-value",
+                              "value": "6"
+                            },
+                            "operator": ">="
+                          },
+                          "foregroundColor": "#FFFFFF"
+                        },
+                        {
+                          "backgroundColor": "#E67E22",
+                          "condition": {
+                            "operand": {
+                              "type": "data-value",
+                              "value": "4"
+                            },
+                            "operator": ">="
+                          },
+                          "foregroundColor": "#FFFFFF"
+                        },
+                        {
+                          "backgroundColor": "#F5B041",
+                          "condition": {
+                            "operand": {
+                              "type": "data-value",
+                              "value": "2"
+                            },
+                            "operator": ">="
+                          },
+                          "foregroundColor": "#1F272D"
+                        }
+                      ],
+                      "type": "basic"
+                    }
+                  },
+                  {
+                    "fieldName": "revenue_24m",
+                    "format": {
+                      "abbreviation": "compact",
+                      "decimalPlaces": {
+                        "places": 1,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    }
+                  }
+                ],
+                "rowOrder": [
+                  {
+                    "by": "column-reversed",
+                    "field": {
+                      "index": 6
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 12,
+            "height": 10
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "channels",
+      "displayName": "6 - Channels (read with care)",
+      "layout": [
+        {
+          "widget": {
+            "name": "key_message",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Channel labels are not stable, so this page shows a data problem, not customer behavior. PHONECALL fell from 49% of orders in 2017 to 2% in 2022; RETAIL SHOP rose from 0% to 36%; UNKNOWN SOURCE rose from 0% to 31%. The break is in Nov 2020 and partly reverses in Feb 2021: it looks like a labeling or process change (hypothesis). Only ECOMMERCE stays between 19% and 27%. Do not read channel behavior from this data."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "channel_area",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "channel_month",
+                  "fields": [
+                    {
+                      "name": "channel_name",
+                      "expression": "`channel_name`"
+                    },
+                    {
+                      "name": "month_start",
+                      "expression": "`month_start`"
+                    },
+                    {
+                      "name": "sum(orders)",
+                      "expression": "SUM(`orders`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Share of orders by channel, by month"
+              },
+              "version": 3,
+              "mark": {
+                "opacity": 1,
+                "layout": "percent-stack"
+              },
+              "widgetType": "area",
+              "encodings": {
+                "x": {
+                  "fieldName": "month_start",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(orders)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "channel_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#1ABC9C",
+                        "value": "ECOMMERCE"
+                      },
+                      {
+                        "color": "#1F4E79",
+                        "value": "PHONECALL"
+                      },
+                      {
+                        "color": "#E67E22",
+                        "value": "RETAIL SHOP"
+                      },
+                      {
+                        "color": "#8A9299",
+                        "value": "PAPER"
+                      },
+                      {
+                        "color": "#C0392B",
+                        "value": "UNKNOWN SOURCE"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 12,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_unknown_orders",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "channel_kpi",
+                  "fields": [
+                    {
+                      "name": "sum(unknown_orders_share_pct)",
+                      "expression": "SUM(`unknown_orders_share_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Orders without a channel, 2022"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(unknown_orders_share_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_unknown_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "channel_kpi",
+                  "fields": [
+                    {
+                      "name": "sum(unknown_revenue_share_pct)",
+                      "expression": "SUM(`unknown_revenue_share_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue without a channel, 2022"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(unknown_revenue_share_pct)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "style": {
+                    "fontSize": 28
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 13,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "channel_events_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "channel_events",
+                  "fields": [
+                    {
+                      "name": "event_month",
+                      "expression": "`event_month`"
+                    },
+                    {
+                      "name": "channel",
+                      "expression": "`channel`"
+                    },
+                    {
+                      "name": "event",
+                      "expression": "`event`"
+                    },
+                    {
+                      "name": "evidence",
+                      "expression": "`evidence`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Channel events to keep in mind"
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "event_month",
+                    "format": {
+                      "date": "year-month-day",
+                      "type": "date"
+                    }
+                  },
+                  {
+                    "fieldName": "channel"
+                  },
+                  {
+                    "fieldName": "event"
+                  },
+                  {
+                    "fieldName": "evidence"
+                  },
+                  {
+                    "fieldName": "status"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
