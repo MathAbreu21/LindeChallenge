@@ -95,17 +95,19 @@ The last cell of `04_gold_marts` is an **acceptance test**: the gold layer must 
 - **One definition per metric.** The comparable window lives in `dim_date`, every metric is documented in `metric_catalog`, and the reporting tool only sums and divides.
 - **Publish only if it is right.** The star schema checks run on the DataFrames before any table is written, so a failed run leaves the previous version in place. Mart checks and the acceptance test run right after the marts are built and stop the notebook, so a bad number never reaches the export step unnoticed.
 - **Repeat runs are cheap.** A file already in bronze is not opened again, silver needs one aggregation pass plus the two
-  writes, rule results go in one commit, and column comments are written with the schema, so governance issues no DDL
-  unless something changed in the code or the catalog. Gold follows the same rules: the star schema checks need three passes
-  over silver (totals, the fact joined to the four dimensions, the dimension keys), the mart checks and the acceptance test read
-  the marts in a handful of queries, and divisions are guarded with `NULLIF` because serverless runs in ANSI mode.
+  writes, rule results go in one commit, and column comments are written with the schema. Governance reads the catalog once
+  per notebook (`information_schema`) and issues DDL only for what differs. Independent tables are written at the same time
+  (`PARALLEL_WRITES` in `00_config`): the five star-schema tables in one wave, the marts in two. The star schema checks need
+  two passes over silver, the mart checks and the acceptance test share one query, and divisions are guarded with `NULLIF`
+  because serverless runs in ANSI mode.
 
 ## Running as a job
 
 Four serverless tasks in order: `01_setup_bronze`, `02_silver`, `03_gold_star`, `04_gold_marts`. Nothing is installed at run time on the normal path: the native
 Excel reader (Databricks Runtime 17.1 or above) needs no extra package. `openpyxl` is only needed by the pandas fallback
 and is installed on demand when that path runs; to avoid even that, add `openpyxl` to the job's environment
-dependencies. `EXCEL_READER` in `00_config` forces one reader when the automatic choice is not wanted.
+dependencies. `EXCEL_READER` in `00_config` forces one reader when the automatic choice is not wanted. `PARALLEL_WRITES` sets how
+many tables a notebook writes at the same time (default 4; set it to 1 to write one after the other).
 
 ## Not in this repository
 

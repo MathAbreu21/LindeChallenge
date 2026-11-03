@@ -21,9 +21,9 @@
 # MAGIC   is the most frequent label. A slowly changing dimension (SCD type 2) is the next step if segment history becomes a requirement.
 # MAGIC - **Nothing is published unless the integrity rules pass** (grain, row and value reconciliation, no orphan keys, no key collisions).
 # MAGIC
-# MAGIC Shape of the run: three passes over silver for all the checks (silver totals, one pass over the fact joined to the four dimensions,
-# MAGIC one pass over the dimension keys), the rule results written once, five table writes with their column comments in the schema,
-# MAGIC and governance that issues DDL only for what differs from the catalog.
+# MAGIC Shape of the run: two passes over silver for all the checks (silver totals; the fact joined to the four dimensions, which also
+# MAGIC counts surrogate-key collisions), the rule results written once, the five tables written at the same time with their column
+# MAGIC comments in the schema, and governance that reads the catalog once and issues DDL only for what differs.
 
 # COMMAND ----------
 
@@ -37,8 +37,6 @@
 # MAGIC conformity counts (G06): if a product id has one description and one supergroup, counting distinct pairs equals counting distinct ids.
 
 # COMMAND ----------
-
-from functools import reduce
 
 from pyspark.sql import Window
 
@@ -287,12 +285,15 @@ FCT_ORDER_LINE_COMMENTS = {
 # MAGIC - **One pass over the fact.** The fact is joined (broadcast) to the four dimensions and aggregated once. That single result
 # MAGIC   gives the grain (G01), rows and totals against silver (G02, G03), the missing keys per dimension (G04) and the window flag (G07).
 # MAGIC   Violations of G04 count fact lines whose key is not in the dimension.
-# MAGIC - **One pass over the keys.** Rows, distinct surrogate keys and distinct natural keys of the four dimensions in one query (G05).
+# MAGIC - **Key collisions in the same pass (G05).** Distinct natural keys and distinct surrogate keys are counted on the joined fact; a
+# MAGIC   collision would make them differ. A duplicate key inside a dimension would duplicate fact lines in that join, so G01 and G02
+# MAGIC   cover dimension uniqueness, and `date_key` (yyyymmdd) is a bijection by construction.
 
 # COMMAND ----------
 
 checked = (
-    silver.select(*fact_columns, F.col("is_in_comparable_window").alias("_silver_window_flag"))
+    silver.select(*fact_columns, F.col("is_in_comparable_window").alias("_silver_window_flag"),
+                  "customer_id", "product_id", "order_channel")  # natural keys, for the collision count (G05)
     .join(F.broadcast(dim_date.select("date_key", F.col("is_in_comparable_window").alias("_dim_window_flag"), F.lit(1).alias("_in_date"))), "date_key", "left")
     .join(F.broadcast(dim_customer.select("customer_key", F.lit(1).alias("_in_customer"))), "customer_key", "left")
     .join(F.broadcast(dim_product.select("product_key", F.lit(1).alias("_in_product"))), "product_key", "left")
@@ -314,29 +315,15 @@ fact_check = checked.agg(
     missing("_in_product").alias("orphan_product"),
     missing("_in_channel").alias("orphan_channel"),
     F.sum(F.when(F.col("_silver_window_flag") != F.col("_dim_window_flag"), 1).otherwise(0)).alias("window_mismatch"),
+    (F.countDistinct("customer_id") - F.countDistinct("customer_key")).alias("collisions_customer"),
+    (F.countDistinct("product_id") - F.countDistinct("product_key")).alias("collisions_product"),
+    (F.countDistinct("order_channel") - F.countDistinct("channel_key")).alias("collisions_channel"),
 ).first().asDict()
 
 
-def key_stats(dim, name, key, natural):
-    return dim.agg(
-        F.lit(name).alias("dim"), F.count("*").alias("n_rows"),
-        F.countDistinct(key).alias("n_keys"), F.countDistinct(natural).alias("n_natural"),
-    )
-
-
-key_check = {
-    r["dim"]: r.asDict()
-    for r in reduce(
-        lambda a, b: a.unionByName(b),
-        [
-            key_stats(dim_customer, "dim_customer", "customer_key", "customer_id"),
-            key_stats(dim_product, "dim_product", "product_key", "product_id"),
-            key_stats(dim_channel, "dim_channel", "channel_key", "channel_name"),
-            key_stats(dim_date, "dim_date", "date_key", "date"),
-        ],
-    ).collect()
-}
-key_problems = sum(abs(k["n_rows"] - k["n_keys"]) + abs(k["n_keys"] - k["n_natural"]) for k in key_check.values())
+# G05: a surrogate-key collision would make two natural keys share one key, so distinct natural keys and distinct surrogate
+# keys must agree. Counted in the pass above, instead of a separate query over the four dimensions.
+key_problems = sum(abs(fact_check[c]) for c in ("collisions_customer", "collisions_product", "collisions_channel"))
 
 rules = [
     dq_result("gold", "G01_fact_grain", "fct_order_line is unique on order_no + order_item_no (violations: rows that repeat a key)", "fail",
@@ -360,54 +347,52 @@ log_and_enforce(rules)
 # MAGIC %md
 # MAGIC ## Publish
 # MAGIC Each table is rebuilt whole, with its column comments written together with the schema (`write_delta` in `00_config`).
+# MAGIC The five writes run at the same time.
 
 # COMMAND ----------
 
-for df, table, comments in [
+# The five tables are independent, so they are written at the same time (PARALLEL_WRITES in 00_config).
+write_delta_many([
     (dim_date, T_DIM_DATE, DIM_DATE_COMMENTS),
     (dim_product, T_DIM_PRODUCT, DIM_PRODUCT_COMMENTS),
     (dim_customer, T_DIM_CUSTOMER, DIM_CUSTOMER_COMMENTS),
     (dim_channel, T_DIM_CHANNEL, DIM_CHANNEL_COMMENTS),
     (fct_order_line, T_FCT_ORDER_LINE, FCT_ORDER_LINE_COMMENTS),
-]:
-    write_delta(df, table, comments)
+])
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Governance: comments and tags
-# MAGIC Compared with the catalog first; only differences are applied. Column comments were written with the schema,
-# MAGIC so a normal run issues at most the table comment.
+# MAGIC One catalog read for the five tables; only differences are applied. Column comments were written with the schema,
+# MAGIC so a normal run issues at most a table comment.
 
 # COMMAND ----------
 
 GOLD_TAGS = {"layer": "gold", "domain": "sales", "model": "star_schema"}
 
-apply_governance(
-    T_DIM_DATE,
-    "Calendar dimension: one row per day, whole years covering the data. Holds the comparable-window flag used by every like-for-like metric.",
-    DIM_DATE_COMMENTS, {**GOLD_TAGS, "table_type": "dimension"},
-)
-apply_governance(
-    T_DIM_PRODUCT,
-    "Product dimension: one row per SKU, with gas and cylinder size parsed from the description.",
-    DIM_PRODUCT_COMMENTS, {**GOLD_TAGS, "table_type": "dimension"},
-)
-apply_governance(
-    T_DIM_CUSTOMER,
-    "Customer dimension: one row per customer id. Customers can appear under more than one id family, so check radical_in_multiple_families before counting customers.",
-    DIM_CUSTOMER_COMMENTS, {**GOLD_TAGS, "table_type": "dimension"},
-)
-apply_governance(
-    T_DIM_CHANNEL,
-    "Order channel dimension: one row per channel label. Labels changed in Nov 2020, so channel mix across that date is not comparable.",
-    DIM_CHANNEL_COMMENTS, {**GOLD_TAGS, "table_type": "dimension"},
-)
-apply_governance(
-    T_FCT_ORDER_LINE,
-    "Fact table: one row per order line. Quantity in cylinders and value in EUR (unit and currency kept as attributes). Join to the dim_* tables on the *_key columns.",
-    FCT_ORDER_LINE_COMMENTS, {**GOLD_TAGS, "table_type": "fact"},
-)
+apply_governance_batch([
+    (T_DIM_DATE,
+     "Calendar dimension: one row per day, whole years covering the data. Holds the comparable-window flag used by every like-for-like metric.",
+     DIM_DATE_COMMENTS,
+     {**GOLD_TAGS, "table_type": "dimension"}),
+    (T_DIM_PRODUCT,
+     "Product dimension: one row per SKU, with gas and cylinder size parsed from the description.",
+     DIM_PRODUCT_COMMENTS,
+     {**GOLD_TAGS, "table_type": "dimension"}),
+    (T_DIM_CUSTOMER,
+     "Customer dimension: one row per customer id. Customers can appear under more than one id family, so check radical_in_multiple_families before counting customers.",
+     DIM_CUSTOMER_COMMENTS,
+     {**GOLD_TAGS, "table_type": "dimension"}),
+    (T_DIM_CHANNEL,
+     "Order channel dimension: one row per channel label. Labels changed in Nov 2020, so channel mix across that date is not comparable.",
+     DIM_CHANNEL_COMMENTS,
+     {**GOLD_TAGS, "table_type": "dimension"}),
+    (T_FCT_ORDER_LINE,
+     "Fact table: one row per order line. Quantity in cylinders and value in EUR (unit and currency kept as attributes). Join to the dim_* tables on the *_key columns.",
+     FCT_ORDER_LINE_COMMENTS,
+     {**GOLD_TAGS, "table_type": "fact"}),
+])
 
 # COMMAND ----------
 

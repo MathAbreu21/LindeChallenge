@@ -245,7 +245,8 @@ quarantine_df = quarantined.select(*BASE_COLUMNS, "_order_date_raw", "_quarantin
 
 # MAGIC %md
 # MAGIC ## 4. Write silver and quarantine (Delta, rebuilt from bronze)
-# MAGIC The column comments are part of the written schema, so the rebuilt tables come out documented.
+# MAGIC The column comments are part of the written schema, so the rebuilt tables come out documented. Both tables are written
+# MAGIC at the same time.
 
 # COMMAND ----------
 
@@ -278,12 +279,11 @@ SILVER_COLUMN_COMMENTS = {
     "_silver_loaded_at": "Timestamp of the silver run.",
 }
 
-for df, table in [(silver_df, T_SILVER_ORDERS), (quarantine_df, T_SILVER_QUARANTINE)]:
-    (
-        with_comments(df, SILVER_COLUMN_COMMENTS)
-        .write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
-    )
-    print(f"Wrote {table}")
+# The two tables are independent, so they are written at the same time (PARALLEL_WRITES in 00_config).
+write_delta_many([
+    (silver_df, T_SILVER_ORDERS, SILVER_COLUMN_COMMENTS),
+    (quarantine_df, T_SILVER_QUARANTINE, SILVER_COLUMN_COMMENTS),
+])
 
 # COMMAND ----------
 
@@ -336,23 +336,26 @@ print("Reconciliation passed: bronze = silver + quarantine, rows and value.")
 
 # MAGIC %md
 # MAGIC ## 6. Governance: comments and tags
-# MAGIC Compared with the catalog first; only differences are applied. Column comments were written with the schema,
+# MAGIC One catalog read for the three tables; only differences are applied. Column comments were written with the schema,
 # MAGIC so a normal run issues no DDL here.
 
 # COMMAND ----------
 
-apply_governance(
-    T_SILVER_ORDERS,
-    "Typed, validated and flagged order lines. One row per order line. Rebuilt from bronze_orders on every run; "
-    "rows that break a quarantine rule are in silver_orders_quarantine.",
-    SILVER_COLUMN_COMMENTS, {"layer": "silver", "domain": "sales"},
-)
-apply_governance(
-    T_SILVER_QUARANTINE,
-    "Order lines that broke a quarantine rule, with the rule id in _quarantine_reason. Review before reprocessing.",
-    SILVER_COLUMN_COMMENTS, {"layer": "silver", "domain": "sales", "purpose": "quarantine"},
-)
-apply_governance(T_DQ_RESULTS, DQ_TABLE_COMMENT, DQ_COLUMN_COMMENTS, DQ_TAGS)
+apply_governance_batch([
+    (T_SILVER_ORDERS,
+     "Typed, validated and flagged order lines. One row per order line. Rebuilt from bronze_orders on every run; "
+     "rows that break a quarantine rule are in silver_orders_quarantine.",
+     SILVER_COLUMN_COMMENTS,
+     {"layer": "silver", "domain": "sales"}),
+    (T_SILVER_QUARANTINE,
+     "Order lines that broke a quarantine rule, with the rule id in _quarantine_reason. Review before reprocessing.",
+     SILVER_COLUMN_COMMENTS,
+     {"layer": "silver", "domain": "sales", "purpose": "quarantine"}),
+    (T_DQ_RESULTS,
+     DQ_TABLE_COMMENT,
+     DQ_COLUMN_COMMENTS,
+     DQ_TAGS),
+])
 
 # COMMAND ----------
 
