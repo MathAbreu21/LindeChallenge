@@ -336,93 +336,25 @@
         "    `lindedata`.`gold`.`mart_kpi_ytd`\n",
         "),\n",
         "c AS (\n",
-        "  SELECT\n",
-        "    *\n",
-        "  FROM\n",
-        "    k\n",
-        "  WHERE\n",
-        "    year\n",
-        "      = (\n",
-        "        SELECT\n",
-        "          MAX(year)\n",
-        "        FROM\n",
-        "          k\n",
-        "      )\n",
+        "  SELECT * FROM k WHERE year = (SELECT MAX(year) FROM k)\n",
         "),\n",
         "p AS (\n",
-        "  SELECT\n",
-        "    *\n",
-        "  FROM\n",
-        "    k\n",
-        "  WHERE\n",
-        "    year\n",
-        "      = (\n",
-        "        SELECT\n",
-        "          MAX(year)\n",
-        "        FROM\n",
-        "          k\n",
-        "      )\n",
-        "        - 1\n",
-        "),\n",
-        "f AS (\n",
-        "  SELECT\n",
-        "    *\n",
-        "  FROM\n",
-        "    k\n",
-        "  WHERE\n",
-        "    year\n",
-        "      = (\n",
-        "        SELECT\n",
-        "          MIN(year)\n",
-        "        FROM\n",
-        "          k\n",
-        "      )\n",
+        "  SELECT * FROM k WHERE year = (SELECT MAX(year) FROM k) - 1\n",
         ")\n",
         "SELECT\n",
         "  c.year AS current_year,\n",
+        "  p.year AS previous_year,\n",
         "  c.window_end,\n",
         "  c.revenue,\n",
         "  c.cylinders,\n",
         "  c.price_per_cylinder,\n",
         "  c.customers,\n",
-        "  concat(\n",
-        "    format_string('%+.1f%%', 100 * (c.revenue / NULLIF(p.revenue, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    p.year,\n",
-        "    ' | ',\n",
-        "    format_string('%+.1f%%', 100 * (c.revenue / NULLIF(f.revenue, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    f.year\n",
-        "  ) AS revenue_note,\n",
-        "  concat(\n",
-        "    format_string('%+.1f%%', 100 * (c.cylinders / NULLIF(p.cylinders, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    p.year,\n",
-        "    ' | ',\n",
-        "    format_string('%+.1f%%', 100 * (c.cylinders / NULLIF(f.cylinders, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    f.year\n",
-        "  ) AS cylinders_note,\n",
-        "  concat(\n",
-        "    format_string('%+.1f%%', 100 * (c.price_per_cylinder / NULLIF(p.price_per_cylinder, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    p.year,\n",
-        "    ' | ',\n",
-        "    format_string('%+.1f%%', 100 * (c.price_per_cylinder / NULLIF(f.price_per_cylinder, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    f.year\n",
-        "  ) AS price_note,\n",
-        "  concat(\n",
-        "    format_string('%+.1f%%', 100 * (c.customers / NULLIF(p.customers, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    p.year,\n",
-        "    ' | ',\n",
-        "    format_string('%+.1f%%', 100 * (c.customers / NULLIF(f.customers, 0) - 1)),\n",
-        "    ' vs ',\n",
-        "    f.year\n",
-        "  ) AS customers_note\n",
+        "  p.revenue AS revenue_prev,\n",
+        "  p.cylinders AS cylinders_prev,\n",
+        "  p.price_per_cylinder AS price_prev,\n",
+        "  p.customers AS customers_prev\n",
         "FROM\n",
-        "  c CROSS JOIN p CROSS JOIN f"
+        "  c CROSS JOIN p"
       ]
     },
     {
@@ -675,7 +607,8 @@
         "  s.price_current,\n",
         "  s.volume_effect,\n",
         "  s.mix_effect,\n",
-        "  s.price_effect\n",
+        "  s.price_effect,\n",
+        "  CASE WHEN s.price_effect >= 0 THEN 'Price gain' ELSE 'Price loss' END AS effect_sign\n",
         "FROM\n",
         "  `lindedata`.`gold`.`mart_pvm_sku_year` s\n",
         "    JOIN `lindedata`.`gold`.`dim_product` p\n",
@@ -693,9 +626,7 @@
             "name": "intro_text",
             "multilineTextboxSpec": {
               "lines": [
-                "## Where do sales stand?\n",
-                "\n",
-                "Revenue, cylinders, price and customers, 2017 to 2022. Every year is cut at Jan 1 to Nov 21."
+                "## Where do sales stand?\n\nRevenue, cylinders, price and customers, 2017 to 2022. Every year is cut at Jan 1 to Nov 21, so 2022 is compared with the same window of earlier years."
               ]
             }
           },
@@ -720,8 +651,8 @@
                       "expression": "SUM(`revenue`)"
                     },
                     {
-                      "name": "revenue_note",
-                      "expression": "`revenue_note`"
+                      "name": "sum(revenue_prev)",
+                      "expression": "SUM(`revenue_prev`)"
                     }
                   ],
                   "disaggregated": false
@@ -729,30 +660,43 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": {
-                  "value": "Revenue, Jan 1 to Nov 21 2022 (EUR)",
-                  "fields": []
-                }
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue 2022 (EUR)",
+                "showDescription": true,
+                "description": "Jan 1 to Nov 21. Arrow compares with the same window of 2021."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(revenue)",
                   "format": {
-                    "type": "number-plain",
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
                     "abbreviation": "compact",
                     "decimalPlaces": {
                       "type": "max",
                       "places": 1
                     }
                   },
-                  "formatTemplate": "{{ @formatted }} ({{ revenue_note }})",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "displayName": "2022"
+                },
+                "target": {
+                  "fieldName": "sum(revenue_prev)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "2021, same window"
                 }
               },
               "data": {
@@ -763,7 +707,7 @@
           "position": {
             "x": 0,
             "y": 2,
-            "width": 6,
+            "width": 3,
             "height": 4
           }
         },
@@ -781,8 +725,8 @@
                       "expression": "SUM(`cylinders`)"
                     },
                     {
-                      "name": "cylinders_note",
-                      "expression": "`cylinders_note`"
+                      "name": "sum(cylinders_prev)",
+                      "expression": "SUM(`cylinders_prev`)"
                     }
                   ],
                   "disaggregated": false
@@ -790,30 +734,41 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": {
-                  "value": "Cylinders ordered",
-                  "fields": []
-                }
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Cylinders ordered 2022",
+                "showDescription": true,
+                "description": "Jan 1 to Nov 21. Arrow compares with the same window of 2021."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(cylinders)",
                   "format": {
                     "type": "number-plain",
-                    "abbreviation": "compact",
+                    "abbreviation": "none",
                     "decimalPlaces": {
                       "type": "max",
-                      "places": 1
+                      "places": 0
                     }
                   },
-                  "formatTemplate": "{{ @formatted }} ({{ cylinders_note }})",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "displayName": "2022"
+                },
+                "target": {
+                  "fieldName": "sum(cylinders_prev)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "displayName": "2021, same window"
                 }
               },
               "data": {
@@ -822,9 +777,9 @@
             }
           },
           "position": {
-            "x": 6,
+            "x": 3,
             "y": 2,
-            "width": 6,
+            "width": 3,
             "height": 4
           }
         },
@@ -842,8 +797,8 @@
                       "expression": "AVG(`price_per_cylinder`)"
                     },
                     {
-                      "name": "price_note",
-                      "expression": "`price_note`"
+                      "name": "avg(price_prev)",
+                      "expression": "AVG(`price_prev`)"
                     }
                   ],
                   "disaggregated": false
@@ -851,30 +806,43 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": {
-                  "value": "Price per cylinder (EUR)",
-                  "fields": []
-                }
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Price per cylinder 2022 (EUR)",
+                "showDescription": true,
+                "description": "Revenue divided by cylinders. Arrow compares with 2021."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "avg(price_per_cylinder)",
                   "format": {
-                    "type": "number-plain",
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
                     "abbreviation": "none",
                     "decimalPlaces": {
                       "type": "max",
                       "places": 2
                     }
                   },
-                  "formatTemplate": "{{ @formatted }} ({{ price_note }})",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "displayName": "2022"
+                },
+                "target": {
+                  "fieldName": "avg(price_prev)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "displayName": "2021, same window"
                 }
               },
               "data": {
@@ -883,9 +851,9 @@
             }
           },
           "position": {
-            "x": 0,
-            "y": 6,
-            "width": 6,
+            "x": 6,
+            "y": 2,
+            "width": 3,
             "height": 4
           }
         },
@@ -903,8 +871,8 @@
                       "expression": "SUM(`customers`)"
                     },
                     {
-                      "name": "customers_note",
-                      "expression": "`customers_note`"
+                      "name": "sum(customers_prev)",
+                      "expression": "SUM(`customers_prev`)"
                     }
                   ],
                   "disaggregated": false
@@ -912,15 +880,14 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": {
-                  "value": "Active customers",
-                  "fields": []
-                }
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Active customers 2022",
+                "showDescription": true,
+                "description": "Customers with at least one order, Jan 1 to Nov 21. Arrow compares with 2021."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(customers)",
@@ -932,10 +899,22 @@
                       "places": 0
                     }
                   },
-                  "formatTemplate": "{{ @formatted }} ({{ customers_note }})",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "displayName": "2022"
+                },
+                "target": {
+                  "fieldName": "sum(customers_prev)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "displayName": "2021, same window"
                 }
               },
               "data": {
@@ -944,9 +923,9 @@
             }
           },
           "position": {
-            "x": 6,
-            "y": 6,
-            "width": 6,
+            "x": 9,
+            "y": 2,
+            "width": 3,
             "height": 4
           }
         },
@@ -979,10 +958,9 @@
             "spec": {
               "frame": {
                 "showTitle": true,
-                "title": {
-                  "value": "Price up 44%, cylinders down 36% since 2017: revenue ends 7.5% lower",
-                  "fields": []
-                }
+                "title": "Price up 44%, cylinders down 36% since 2017: revenue ends 7.5% lower",
+                "showDescription": true,
+                "description": "Index, 2017 = 100. Every year on the same Jan 1 to Nov 21 window."
               },
               "version": 3,
               "widgetType": "line",
@@ -1014,20 +992,20 @@
                     "type": "categorical",
                     "mappings": [
                       {
-                        "value": "Cylinders",
-                        "color": "#8A9299"
-                      },
-                      {
                         "value": "Revenue",
-                        "color": "#1F4E79"
+                        "color": "#2A78D6"
                       },
                       {
                         "value": "Price per cylinder",
-                        "color": "#17A2B8"
+                        "color": "#EB6834"
+                      },
+                      {
+                        "value": "Cylinders",
+                        "color": "#1BAF7A"
                       },
                       {
                         "value": "Active customers",
-                        "color": "#E8862D"
+                        "color": "#898781"
                       }
                     ]
                   }
@@ -1040,17 +1018,17 @@
           },
           "position": {
             "x": 0,
-            "y": 10,
+            "y": 6,
             "width": 6,
-            "height": 9
+            "height": 10
           }
         },
         {
           "widget": {
-            "name": "cylinders_price_combo",
+            "name": "cylinders_bar",
             "queries": [
               {
-                "name": "combo_primary_1",
+                "name": "main_query",
                 "query": {
                   "datasetName": "kpi_year",
                   "fields": [
@@ -1065,9 +1043,71 @@
                   ],
                   "disaggregated": false
                 }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Fewer cylinders every year since 2018",
+                "showDescription": true,
+                "description": "Cylinders ordered, Jan 1 to Nov 21 of each year."
               },
+              "mark": {
+                "colors": [
+                  "#1BAF7A"
+                ]
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "year_label",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Year"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(cylinders)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "axis": {
+                    "title": "Cylinders"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "price_line",
+            "queries": [
               {
-                "name": "combo_secondary_1",
+                "name": "main_query",
                 "query": {
                   "datasetName": "kpi_year",
                   "fields": [
@@ -1085,93 +1125,57 @@
               }
             ],
             "spec": {
+              "version": 3,
+              "widgetType": "line",
               "frame": {
                 "showTitle": true,
-                "title": {
-                  "value": "Fewer cylinders every year since 2018, at a higher price every year",
-                  "fields": []
-                }
+                "title": "A higher price per cylinder every year",
+                "showDescription": true,
+                "description": "Revenue divided by cylinders, in EUR."
               },
-              "version": 2,
-              "widgetType": "combo",
+              "mark": {
+                "colors": [
+                  "#EB6834"
+                ]
+              },
               "encodings": {
                 "x": {
                   "fieldName": "year_label",
-                  "axis": {
-                    "title": "Year"
-                  },
                   "scale": {
                     "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Year"
                   }
                 },
                 "y": {
-                  "primary": {
-                    "axis": {
-                      "title": "Cylinders"
-                    },
-                    "scale": {
-                      "type": "quantitative"
-                    },
-                    "layers": [
-                      {
-                        "mark": {
-                          "colors": [
-                            "#8A9299"
-                          ]
-                        },
-                        "visual": "bar",
-                        "encodings": {
-                          "value": {
-                            "fieldName": "sum(cylinders)",
-                            "displayName": "Cylinders"
-                          }
-                        },
-                        "queryName": "combo_primary_1"
-                      }
-                    ]
+                  "fieldName": "avg(price_per_cylinder)",
+                  "scale": {
+                    "type": "quantitative"
                   },
-                  "secondary": {
-                    "axis": {
-                      "title": "EUR per cylinder"
-                    },
-                    "scale": {
-                      "type": "quantitative"
-                    },
-                    "format": {
-                      "type": "number-plain",
-                      "abbreviation": "none",
-                      "decimalPlaces": {
-                        "type": "max",
-                        "places": 2
-                      }
-                    },
-                    "layers": [
-                      {
-                        "mark": {
-                          "colors": [
-                            "#17A2B8"
-                          ]
-                        },
-                        "visual": "line",
-                        "encodings": {
-                          "value": {
-                            "fieldName": "avg(price_per_cylinder)",
-                            "displayName": "Price per cylinder"
-                          }
-                        },
-                        "queryName": "combo_secondary_1"
-                      }
-                    ]
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "axis": {
+                    "title": "EUR per cylinder"
                   }
                 }
+              },
+              "data": {
+                "queryName": "main_query"
               }
             }
           },
           "position": {
             "x": 6,
-            "y": 10,
+            "y": 11,
             "width": 6,
-            "height": 9
+            "height": 5
           }
         },
         {
@@ -1179,15 +1183,15 @@
             "name": "why_window_note",
             "multilineTextboxSpec": {
               "lines": [
-                "Why Jan 1 to Nov 21: full-year 2021 revenue was EUR 4.43M, while 2022 so far (to Nov 21) is EUR 4.08M. Compared on the same window, 2021 was EUR 3.96M, so 2022 is +3.1%. Comparing 2022 with the full year would show a false drop of 7.8%."
+                "**Why Jan 1 to Nov 21.** Full-year 2021 revenue was EUR 4.43M, while 2022 so far (to Nov 21) is EUR 4.08M. On the same window, 2021 was EUR 3.96M, so 2022 is +3.1%. Comparing 2022 with the full year would show a false drop of 7.8%."
               ]
             }
           },
           "position": {
             "x": 0,
-            "y": 19,
+            "y": 16,
             "width": 12,
-            "height": 3
+            "height": 2
           }
         }
       ],
@@ -1296,7 +1300,7 @@
             "x": 0,
             "y": 0,
             "width": 3,
-            "height": 2
+            "height": 3
           }
         },
         {
@@ -1304,7 +1308,7 @@
             "name": "key_message",
             "multilineTextboxSpec": {
               "lines": [
-                "Key message: 2017 to 2022, revenue is down 7.5%, but the bridge shows price is doing all the work: EUR +1.58M from price, against EUR -1.57M lost to volume and mix. Price offsets 72.7% of the volume loss; the remaining 27.3% is the revenue gap. At SKU level, 6 of the 16 traded SKUs lost price."
+                "**Key message.** 2017 to 2022, revenue is down 7.5%, but the bridge shows price is doing all the work: EUR +1.58M from price, against EUR -1.57M lost to volume and mix. Price offsets 72.7% of the volume loss; the remaining 27.3% is the revenue gap. At SKU level, 6 of the 16 traded SKUs lost price. *Text refers to the default selection, 2017 to 2022.*"
               ]
             }
           },
@@ -1312,7 +1316,7 @@
             "x": 3,
             "y": 0,
             "width": 9,
-            "height": 5
+            "height": 3
           }
         },
         {
@@ -1338,50 +1342,46 @@
               }
             ],
             "spec": {
+              "version": 3,
+              "widgetType": "waterfall",
               "frame": {
                 "showTitle": true,
-                "title": {
-                  "value": "Revenue bridge: volume, mix and price (EUR)",
-                  "fields": []
-                }
+                "title": "Revenue bridge: volume, mix and price (EUR)",
+                "showDescription": true,
+                "description": "Effect of each factor on revenue between the two years selected above."
               },
               "mark": {
                 "colors": [
-                  "#1F4E79"
+                  "#2A78D6"
                 ]
               },
               "total": {
-                "color": "#1F4E79",
+                "color": "#2A78D6",
                 "displayValue": "Revenue, current year",
                 "hide": false,
                 "label": {
                   "show": true
                 }
               },
-              "version": 3,
-              "widgetType": "waterfall",
               "encodings": {
                 "x": {
                   "fieldName": "step",
-                  "axis": {
-                    "title": "Bridge step"
-                  },
                   "scale": {
                     "type": "categorical"
                   }
                 },
                 "y": {
                   "fieldName": "sum(amount)",
-                  "format": {
-                    "abbreviation": "compact",
-                    "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
-                  },
                   "scale": {
                     "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
                   }
                 },
                 "label": {
@@ -1395,9 +1395,213 @@
           },
           "position": {
             "x": 0,
-            "y": 5,
+            "y": 3,
             "width": 12,
-            "height": 9
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_volume",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(volume_effect)",
+                      "expression": "SUM(`volume_effect`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Volume effect (EUR)",
+                "showDescription": true,
+                "description": "Fewer cylinders at base-year prices."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(volume_effect)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_mix",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(mix_effect)",
+                      "expression": "SUM(`mix_effect`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Mix effect (EUR)",
+                "showDescription": true,
+                "description": "Shift between SKUs at base-year prices."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(mix_effect)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 11,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_price_effect",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pair_summary",
+                  "fields": [
+                    {
+                      "name": "sum(price_effect)",
+                      "expression": "SUM(`price_effect`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Price effect (EUR)",
+                "showDescription": true,
+                "description": "Price change on current-year cylinders."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(price_effect)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 11,
+            "width": 3,
+            "height": 4
           }
         },
         {
@@ -1419,27 +1623,29 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Price offsets the volume loss by"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Price offsets the volume loss by",
+                "showDescription": true,
+                "description": "Price effect as a share of the volume and mix loss."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(price_offsets_volume_loss_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}%",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "data": {
@@ -1448,8 +1654,8 @@
             }
           },
           "position": {
-            "x": 0,
-            "y": 14,
+            "x": 9,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -1470,6 +1676,10 @@
                     {
                       "name": "product_description",
                       "expression": "`product_description`"
+                    },
+                    {
+                      "name": "effect_sign",
+                      "expression": "`effect_sign`"
                     }
                   ],
                   "disaggregated": false
@@ -1477,28 +1687,22 @@
               }
             ],
             "spec": {
+              "version": 3,
+              "widgetType": "bar",
               "frame": {
                 "showTitle": true,
-                "title": {
-                  "value": "Where the price wins and losses sit (EUR per SKU)",
-                  "fields": []
-                }
+                "title": "Where the price wins and losses sit (EUR per SKU)",
+                "showDescription": true,
+                "description": "Price effect per product between the two years selected above. Losses in red."
               },
-              "version": 3,
-              "mark": {
-                "colors": [
-                  "#17A2B8"
-                ]
-              },
-              "widgetType": "bar",
               "encodings": {
                 "x": {
                   "fieldName": "sum(price_effect)",
-                  "axis": {
-                    "title": "Price effect (EUR)"
-                  },
                   "scale": {
                     "type": "quantitative"
+                  },
+                  "axis": {
+                    "title": "Price effect (EUR)"
                   }
                 },
                 "y": {
@@ -1507,14 +1711,31 @@
                     "title": "Product"
                   },
                   "scale": {
-                    "categorySize": {
-                      "number": 16,
-                      "type": "number-of-categories"
-                    },
                     "type": "categorical",
                     "sort": {
                       "by": "x-reversed"
+                    },
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 16
                     }
+                  }
+                },
+                "color": {
+                  "fieldName": "effect_sign",
+                  "displayName": "Effect",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Price gain",
+                        "color": "#2A78D6"
+                      },
+                      {
+                        "value": "Price loss",
+                        "color": "#D03B3B"
+                      }
+                    ]
                   }
                 }
               },
@@ -1524,9 +1745,9 @@
             }
           },
           "position": {
-            "x": 3,
-            "y": 14,
-            "width": 9,
+            "x": 0,
+            "y": 15,
+            "width": 12,
             "height": 8
           }
         },
@@ -1589,7 +1810,9 @@
             "spec": {
               "frame": {
                 "showTitle": true,
-                "title": "SKU detail: cylinders, price, and PVM effects"
+                "title": "SKU detail: cylinders, price and PVM effects",
+                "showDescription": true,
+                "description": "Sorted by price effect. Negative effects in red."
               },
               "version": 2,
               "widgetType": "table",
@@ -1600,13 +1823,16 @@
                     "displayName": "Product"
                   },
                   {
-                    "fieldName": "size_liters"
+                    "fieldName": "size_liters",
+                    "displayName": "Size (L)"
                   },
                   {
-                    "fieldName": "cylinders_base"
+                    "fieldName": "cylinders_base",
+                    "displayName": "Cylinders, base year"
                   },
                   {
-                    "fieldName": "cylinders_current"
+                    "fieldName": "cylinders_current",
+                    "displayName": "Cylinders, current year"
                   },
                   {
                     "fieldName": "price_base",
@@ -1617,7 +1843,8 @@
                         "type": "max"
                       },
                       "type": "number-plain"
-                    }
+                    },
+                    "displayName": "Price, base (EUR)"
                   },
                   {
                     "fieldName": "price_current",
@@ -1628,7 +1855,8 @@
                         "type": "max"
                       },
                       "type": "number-plain"
-                    }
+                    },
+                    "displayName": "Price, current (EUR)"
                   },
                   {
                     "fieldName": "volume_effect",
@@ -1650,11 +1878,12 @@
                             },
                             "operator": "<"
                           },
-                          "foregroundColor": "#C0392B"
+                          "foregroundColor": "#D03B3B"
                         }
                       ],
                       "type": "basic"
-                    }
+                    },
+                    "displayName": "Volume effect (EUR)"
                   },
                   {
                     "fieldName": "mix_effect",
@@ -1676,11 +1905,12 @@
                             },
                             "operator": "<"
                           },
-                          "foregroundColor": "#C0392B"
+                          "foregroundColor": "#D03B3B"
                         }
                       ],
                       "type": "basic"
-                    }
+                    },
+                    "displayName": "Mix effect (EUR)"
                   },
                   {
                     "fieldName": "price_effect",
@@ -1702,11 +1932,12 @@
                             },
                             "operator": "<"
                           },
-                          "foregroundColor": "#C0392B"
+                          "foregroundColor": "#D03B3B"
                         }
                       ],
                       "type": "basic"
-                    }
+                    },
+                    "displayName": "Price effect (EUR)"
                   }
                 ],
                 "rowOrder": [
@@ -1725,7 +1956,7 @@
           },
           "position": {
             "x": 0,
-            "y": 22,
+            "y": 23,
             "width": 12,
             "height": 8
           }
@@ -1815,7 +2046,7 @@
             "x": 0,
             "y": 0,
             "width": 3,
-            "height": 2
+            "height": 3
           }
         },
         {
@@ -1823,7 +2054,7 @@
             "name": "key_message",
             "multilineTextboxSpec": {
               "lines": [
-                "Key message: of the EUR +123K growth from 2021 to 2022 (+3.1%), EUR +99K (80.6%) came from one customer. Excluding that customer, growth was +0.6%. Excluding helium, the portfolio actually shrank by -4.2%. 2021 to 2022 is one customer's story, not a broad recovery."
+                "**Key message.** Of the EUR +123K growth from 2021 to 2022 (+3.1%), EUR +99K (80.6%) came from one customer. Excluding that customer, growth was +0.6%. Excluding helium, the portfolio shrank by 4.2%. 2021 to 2022 is one customer's story, not a broad recovery. *Text refers to the default selection, 2021 to 2022.*"
               ]
             }
           },
@@ -1831,7 +2062,7 @@
             "x": 3,
             "y": 0,
             "width": 9,
-            "height": 5
+            "height": 3
           }
         },
         {
@@ -1857,25 +2088,27 @@
               }
             ],
             "spec": {
+              "version": 3,
+              "widgetType": "waterfall",
               "frame": {
                 "showTitle": true,
-                "title": "Growth anatomy 2021 to 2022: top customer, helium, rest of portfolio (EUR)"
+                "title": "Growth anatomy: top customer, helium, rest of portfolio (EUR)",
+                "showDescription": true,
+                "description": "Revenue change between the two years selected above, split by where it came from."
               },
               "mark": {
                 "colors": [
-                  "#1F4E79"
+                  "#2A78D6"
                 ]
               },
               "total": {
-                "color": "#1F4E79",
+                "color": "#2A78D6",
                 "displayValue": "Revenue, current year",
                 "hide": false,
                 "label": {
                   "show": true
                 }
               },
-              "version": 3,
-              "widgetType": "waterfall",
               "encodings": {
                 "x": {
                   "fieldName": "step",
@@ -1885,16 +2118,16 @@
                 },
                 "y": {
                   "fieldName": "sum(amount)",
-                  "format": {
-                    "abbreviation": "compact",
-                    "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
-                  },
                   "scale": {
                     "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
                   }
                 },
                 "label": {
@@ -1908,9 +2141,9 @@
           },
           "position": {
             "x": 0,
-            "y": 5,
+            "y": 3,
             "width": 12,
-            "height": 9
+            "height": 8
           }
         },
         {
@@ -1932,27 +2165,41 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Revenue growth 2021 to 2022"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue growth",
+                "showDescription": true,
+                "description": "Current year vs base year, same window."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(growth_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}%",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "data": {
@@ -1962,7 +2209,7 @@
           },
           "position": {
             "x": 0,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -1990,27 +2237,29 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Top customer share of the growth"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Top customer share of the growth",
+                "showDescription": true,
+                "description": "Share of the revenue change explained by one customer."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(top_customer_share_of_growth_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}% (customer {{ top_customer_id }})",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "formatTemplate": "{{ @formatted }}% (customer {{ top_customer_id }})"
                 }
               },
               "data": {
@@ -2020,7 +2269,7 @@
           },
           "position": {
             "x": 3,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -2044,27 +2293,41 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Growth excluding the top customer"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Growth excluding the top customer",
+                "showDescription": true,
+                "description": "Same comparison without that customer."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(growth_ex_top_customer_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}%",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "data": {
@@ -2074,7 +2337,7 @@
           },
           "position": {
             "x": 6,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -2098,27 +2361,41 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Growth excluding helium"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Growth excluding helium",
+                "showDescription": true,
+                "description": "Same comparison without helium products."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(growth_ex_helium_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}%",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "data": {
@@ -2128,7 +2405,7 @@
           },
           "position": {
             "x": 9,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -2218,7 +2495,7 @@
             "x": 0,
             "y": 0,
             "width": 3,
-            "height": 2
+            "height": 3
           }
         },
         {
@@ -2226,7 +2503,7 @@
             "name": "key_message",
             "multilineTextboxSpec": {
               "lines": [
-                "2021 to 2022: the volume loss comes mostly from customers who stay but buy less (-15.7k cylinders), about three times the cylinders lost with customers who left (-5.1k). New customers keep falling: 618 in 2019, 456 in 2022 (-26%). New = no order in the previous 24 months. Message shown for the default selection."
+                "**Key message.** 2021 to 2022, the volume loss comes mostly from customers who stay but buy less (-15.7K cylinders), about three times the cylinders lost with customers who left (-5.1K). New customers keep falling: 618 in 2019, 456 in 2022 (-26%). *Text refers to the default selection, 2021 to 2022.*"
               ]
             }
           },
@@ -2234,7 +2511,7 @@
             "x": 3,
             "y": 0,
             "width": 9,
-            "height": 5
+            "height": 3
           }
         },
         {
@@ -2260,50 +2537,49 @@
               }
             ],
             "spec": {
+              "version": 3,
+              "widgetType": "waterfall",
               "frame": {
                 "showTitle": true,
-                "title": "Cylinder bridge by customer behavior"
+                "title": "Cylinder bridge by customer behavior",
+                "showDescription": true,
+                "description": "Cylinders lost and gained between the two years selected above, by what customers did."
               },
               "mark": {
                 "colors": [
-                  "#8A9299"
+                  "#1BAF7A"
                 ]
               },
               "total": {
-                "color": "#8A9299",
+                "color": "#1BAF7A",
                 "displayValue": "Cylinders, current year",
                 "hide": false,
                 "label": {
                   "show": true
                 }
               },
-              "version": 3,
-              "widgetType": "waterfall",
               "encodings": {
                 "x": {
                   "fieldName": "step",
-                  "axis": {
-                    "title": "Customer behavior step"
-                  },
                   "scale": {
                     "type": "categorical"
                   }
                 },
                 "y": {
                   "fieldName": "sum(amount)",
-                  "axis": {
-                    "title": "Cylinders"
-                  },
-                  "format": {
-                    "abbreviation": "none",
-                    "decimalPlaces": {
-                      "places": 0,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
-                  },
                   "scale": {
                     "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "axis": {
+                    "title": "Cylinders"
                   }
                 },
                 "label": {
@@ -2317,9 +2593,9 @@
           },
           "position": {
             "x": 0,
-            "y": 5,
+            "y": 3,
             "width": 12,
-            "height": 9
+            "height": 8
           }
         },
         {
@@ -2341,27 +2617,29 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Customer retention"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Customer retention",
+                "showDescription": true,
+                "description": "Base-year customers that ordered again in the current year."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(retention_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}%",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "data": {
@@ -2371,7 +2649,7 @@
           },
           "position": {
             "x": 0,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -2395,25 +2673,27 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Customers lost"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Customers lost",
+                "showDescription": true,
+                "description": "Ordered in the base year, not in the current year."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(customers_lost)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 0,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 0
+                    }
                   },
                   "style": {
-                    "fontSize": 28
+                    "fontSize": 32
                   }
                 }
               },
@@ -2424,7 +2704,7 @@
           },
           "position": {
             "x": 3,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -2448,25 +2728,27 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "New customers"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "New customers",
+                "showDescription": true,
+                "description": "First order in the current year."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(customers_new)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 0,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 0
+                    }
                   },
                   "style": {
-                    "fontSize": 28
+                    "fontSize": 32
                   }
                 }
               },
@@ -2477,7 +2759,7 @@
           },
           "position": {
             "x": 6,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -2501,25 +2783,27 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Win-back customers"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Win-back customers",
+                "showDescription": true,
+                "description": "Back after a gap of 24 months or more."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(customers_winback)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 0,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 0
+                    }
                   },
                   "style": {
-                    "fontSize": 28
+                    "fontSize": 32
                   }
                 }
               },
@@ -2530,7 +2814,7 @@
           },
           "position": {
             "x": 9,
-            "y": 14,
+            "y": 11,
             "width": 3,
             "height": 4
           }
@@ -2559,15 +2843,15 @@
             ],
             "spec": {
               "frame": {
-                "showDescription": true,
                 "showTitle": true,
-                "title": "New customers per year (no order in the previous 24 months)",
-                "description": "2017 and 2018 are absent on purpose: there is no 24-month history yet."
+                "title": "New customers per year keep falling",
+                "showDescription": true,
+                "description": "New = no order in the previous 24 months. 618 in 2019, 456 in 2022."
               },
               "version": 3,
               "mark": {
                 "colors": [
-                  "#E67E22"
+                  "#2A78D6"
                 ]
               },
               "widgetType": "bar",
@@ -2576,6 +2860,9 @@
                   "fieldName": "year_label",
                   "scale": {
                     "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Year"
                   }
                 },
                 "y": {
@@ -2590,6 +2877,9 @@
                   },
                   "scale": {
                     "type": "quantitative"
+                  },
+                  "axis": {
+                    "title": "New customers"
                   }
                 },
                 "label": {
@@ -2603,9 +2893,9 @@
           },
           "position": {
             "x": 0,
-            "y": 18,
+            "y": 15,
             "width": 12,
-            "height": 8
+            "height": 7
           }
         }
       ],
@@ -2621,7 +2911,7 @@
             "name": "key_message",
             "multilineTextboxSpec": {
               "lines": [
-                "480 customers have been silent for more than twice their own ordering rhythm. They hold EUR 937k of revenue over the last 24 months. A year ago the same rule flagged 552 customers: 63% came back within 12 months, against 93% of the others. Use it as a call list, not as a churn forecast."
+                "**Key message.** 480 customers have been silent for more than twice their own ordering rhythm. They hold EUR 937K of revenue over the last 24 months. A year ago the same rule flagged 552 customers: 63% came back within 12 months, against 93% of the others. Use it as a call list, not as a churn forecast."
               ]
             }
           },
@@ -2651,25 +2941,27 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Overdue customers"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Overdue customers",
+                "showDescription": true,
+                "description": "Silent for more than twice their own median gap."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "count(customer_id)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 0,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 0
+                    }
                   },
                   "style": {
-                    "fontSize": 28
+                    "fontSize": 32
                   }
                 }
               },
@@ -2704,25 +2996,28 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "24-month revenue of overdue customers (EUR)"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue at stake (EUR)",
+                "showDescription": true,
+                "description": "Revenue of the overdue customers over the last 24 months."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(revenue_24m)",
                   "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
                     "abbreviation": "compact",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
                   "style": {
-                    "fontSize": 28
+                    "fontSize": 32
                   }
                 }
               },
@@ -2732,8 +3027,8 @@
             }
           },
           "position": {
-            "x": 3,
-            "y": 3,
+            "x": 0,
+            "y": 7,
             "width": 3,
             "height": 4
           }
@@ -2761,53 +3056,59 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Backtest: share that ordered again within 12 months"
-              },
               "version": 3,
               "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Backtest: share that ordered again within 12 months",
+                "showDescription": true,
+                "description": "Customers as flagged one year ago. The rule finds customers at risk, not customers who are gone."
+              },
               "encodings": {
                 "x": {
-                  "fieldName": "customer_group",
+                  "fieldName": "sum(returned_pct)",
                   "scale": {
-                    "type": "categorical"
+                    "type": "quantitative",
+                    "domain": {
+                      "type": "custom",
+                      "min": 0,
+                      "max": 100
+                    }
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "axis": {
+                    "title": "Ordered again within 12 months"
                   }
                 },
                 "y": {
-                  "fieldName": "sum(returned_pct)",
-                  "format": {
-                    "abbreviation": "none",
-                    "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
-                  },
-                  "formatTemplate": "{{ @formatted }}%",
+                  "fieldName": "customer_group",
                   "scale": {
-                    "domain": {
-                      "max": 100,
-                      "min": 0,
-                      "type": "custom"
-                    },
-                    "type": "quantitative"
+                    "type": "categorical"
                   }
                 },
                 "color": {
                   "fieldName": "customer_group",
+                  "displayName": "Group",
                   "scale": {
+                    "type": "categorical",
                     "mappings": [
                       {
-                        "color": "#C0392B",
-                        "value": "Flagged overdue"
+                        "value": "Flagged overdue",
+                        "color": "#D03B3B"
                       },
                       {
-                        "color": "#8A9299",
-                        "value": "Not flagged"
+                        "value": "Not flagged",
+                        "color": "#898781"
                       }
-                    ],
-                    "type": "categorical"
+                    ]
                   }
                 },
                 "label": {
@@ -2815,12 +3116,12 @@
                   "text": {
                     "fieldName": "sum(returned_pct)",
                     "format": {
+                      "type": "number-plain",
                       "abbreviation": "none",
                       "decimalPlaces": {
-                        "places": 1,
-                        "type": "max"
-                      },
-                      "type": "number-plain"
+                        "type": "max",
+                        "places": 1
+                      }
                     },
                     "formatTemplate": "{{ @formatted }}%"
                   }
@@ -2832,9 +3133,9 @@
             }
           },
           "position": {
-            "x": 0,
-            "y": 7,
-            "width": 12,
+            "x": 3,
+            "y": 3,
+            "width": 9,
             "height": 8
           }
         },
@@ -2889,7 +3190,9 @@
             "spec": {
               "frame": {
                 "showTitle": true,
-                "title": "Customers to call first (largest 24-month revenue first)"
+                "title": "Customers to call first",
+                "showDescription": true,
+                "description": "Overdue customers, largest 24-month revenue first. Colour: silent time as a multiple of the customer's own rhythm."
               },
               "rowsPerPage": 25,
               "version": 2,
@@ -2897,64 +3200,70 @@
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "customer_id"
+                    "fieldName": "customer_id",
+                    "displayName": "Customer"
                   },
                   {
                     "fieldName": "last_order_date",
                     "format": {
                       "date": "year-month-day",
                       "type": "date"
-                    }
+                    },
+                    "displayName": "Last order"
                   },
                   {
-                    "fieldName": "order_days"
+                    "fieldName": "order_days",
+                    "displayName": "Order days"
                   },
                   {
-                    "fieldName": "median_gap_days"
+                    "fieldName": "median_gap_days",
+                    "displayName": "Median gap (days)"
                   },
                   {
-                    "fieldName": "silent_days"
+                    "fieldName": "silent_days",
+                    "displayName": "Silent (days)"
                   },
                   {
                     "fieldName": "times_own_rhythm",
                     "style": {
                       "rules": [
                         {
-                          "backgroundColor": "#C0392B",
                           "condition": {
+                            "operator": ">=",
                             "operand": {
                               "type": "data-value",
                               "value": "6"
-                            },
-                            "operator": ">="
+                            }
                           },
+                          "backgroundColor": "#D03B3B",
                           "foregroundColor": "#FFFFFF"
                         },
                         {
-                          "backgroundColor": "#E67E22",
                           "condition": {
+                            "operator": ">=",
                             "operand": {
                               "type": "data-value",
                               "value": "4"
-                            },
-                            "operator": ">="
+                            }
                           },
+                          "backgroundColor": "#EC835A",
                           "foregroundColor": "#FFFFFF"
                         },
                         {
-                          "backgroundColor": "#F5B041",
                           "condition": {
+                            "operator": ">=",
                             "operand": {
                               "type": "data-value",
                               "value": "2"
-                            },
-                            "operator": ">="
+                            }
                           },
-                          "foregroundColor": "#1F272D"
+                          "backgroundColor": "#FAB219",
+                          "foregroundColor": "#0B0B0B"
                         }
                       ],
                       "type": "basic"
-                    }
+                    },
+                    "displayName": "Silent vs own rhythm (x)"
                   },
                   {
                     "fieldName": "revenue_24m",
@@ -2965,7 +3274,8 @@
                         "type": "max"
                       },
                       "type": "number-plain"
-                    }
+                    },
+                    "displayName": "Revenue 24m (EUR)"
                   }
                 ],
                 "rowOrder": [
@@ -2984,7 +3294,7 @@
           },
           "position": {
             "x": 0,
-            "y": 15,
+            "y": 11,
             "width": 12,
             "height": 10
           }
@@ -3002,7 +3312,7 @@
             "name": "key_message",
             "multilineTextboxSpec": {
               "lines": [
-                "Channel labels are not stable, so this page shows a data problem, not customer behavior. PHONECALL fell from 49% of orders in 2017 to 2% in 2022; RETAIL SHOP rose from 0% to 36%; UNKNOWN SOURCE rose from 0% to 31%. The break is in Nov 2020 and partly reverses in Feb 2021: it looks like a labeling or process change (hypothesis). Only ECOMMERCE stays between 19% and 27%. Do not read channel behavior from this data."
+                "**Read with care.** Channel labels are not stable, so this page shows a data problem, not customer behavior. PHONECALL fell from 49% of orders in 2017 to 2% in 2022; RETAIL SHOP rose from 0% to 36%; UNKNOWN SOURCE rose from 0% to 31%. The break is in Nov 2020 and partly reverses in Feb 2021: it looks like a labeling or process change (hypothesis). Only ECOMMERCE stays between 19% and 27%. Do not read channel behavior from this data."
               ]
             }
           },
@@ -3042,7 +3352,9 @@
             "spec": {
               "frame": {
                 "showTitle": true,
-                "title": "Share of orders by channel, by month"
+                "title": "Share of orders by channel, by month",
+                "showDescription": true,
+                "description": "100% stacked. The break in Nov 2020 and the partial reversal in Feb 2021 look like label changes, not customer behavior."
               },
               "version": 3,
               "mark": {
@@ -3055,12 +3367,18 @@
                   "fieldName": "month_start",
                   "scale": {
                     "type": "temporal"
+                  },
+                  "axis": {
+                    "title": "Month"
                   }
                 },
                 "y": {
                   "fieldName": "sum(orders)",
                   "scale": {
                     "type": "quantitative"
+                  },
+                  "axis": {
+                    "title": "Share of orders"
                   }
                 },
                 "color": {
@@ -3068,28 +3386,29 @@
                   "scale": {
                     "mappings": [
                       {
-                        "color": "#1ABC9C",
-                        "value": "ECOMMERCE"
+                        "value": "PHONECALL",
+                        "color": "#2A78D6"
                       },
                       {
-                        "color": "#1F4E79",
-                        "value": "PHONECALL"
+                        "value": "RETAIL SHOP",
+                        "color": "#EB6834"
                       },
                       {
-                        "color": "#E67E22",
-                        "value": "RETAIL SHOP"
+                        "value": "ECOMMERCE",
+                        "color": "#1BAF7A"
                       },
                       {
-                        "color": "#8A9299",
-                        "value": "PAPER"
+                        "value": "PAPER",
+                        "color": "#EDA100"
                       },
                       {
-                        "color": "#C0392B",
-                        "value": "UNKNOWN SOURCE"
+                        "value": "UNKNOWN SOURCE",
+                        "color": "#898781"
                       }
                     ],
                     "type": "categorical"
-                  }
+                  },
+                  "displayName": "Channel"
                 }
               },
               "data": {
@@ -3101,7 +3420,7 @@
             "x": 0,
             "y": 4,
             "width": 12,
-            "height": 9
+            "height": 8
           }
         },
         {
@@ -3123,27 +3442,29 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Orders without a channel, 2022"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Orders without a channel, 2022",
+                "showDescription": true,
+                "description": "Share of 2022 orders labeled UNKNOWN SOURCE."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(unknown_orders_share_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}%",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "data": {
@@ -3153,8 +3474,8 @@
           },
           "position": {
             "x": 0,
-            "y": 13,
-            "width": 6,
+            "y": 12,
+            "width": 3,
             "height": 4
           }
         },
@@ -3177,27 +3498,29 @@
               }
             ],
             "spec": {
-              "frame": {
-                "showTitle": true,
-                "title": "Revenue without a channel, 2022"
-              },
               "version": 2,
               "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue without a channel, 2022",
+                "showDescription": true,
+                "description": "Share of 2022 revenue labeled UNKNOWN SOURCE."
+              },
               "encodings": {
                 "value": {
                   "fieldName": "sum(unknown_revenue_share_pct)",
                   "format": {
+                    "type": "number-plain",
                     "abbreviation": "none",
                     "decimalPlaces": {
-                      "places": 1,
-                      "type": "max"
-                    },
-                    "type": "number-plain"
+                      "type": "max",
+                      "places": 1
+                    }
                   },
-                  "formatTemplate": "{{ @formatted }}%",
                   "style": {
-                    "fontSize": 28
-                  }
+                    "fontSize": 32
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
                 }
               },
               "data": {
@@ -3206,9 +3529,9 @@
             }
           },
           "position": {
-            "x": 6,
-            "y": 13,
-            "width": 6,
+            "x": 0,
+            "y": 16,
+            "width": 3,
             "height": 4
           }
         },
@@ -3249,7 +3572,9 @@
             "spec": {
               "frame": {
                 "showTitle": true,
-                "title": "Channel events to keep in mind"
+                "title": "Channel events to keep in mind",
+                "showDescription": true,
+                "description": "Known label and process changes, with the evidence behind each."
               },
               "version": 2,
               "widgetType": "table",
@@ -3260,19 +3585,24 @@
                     "format": {
                       "date": "year-month-day",
                       "type": "date"
-                    }
+                    },
+                    "displayName": "Month"
                   },
                   {
-                    "fieldName": "channel"
+                    "fieldName": "channel",
+                    "displayName": "Channel"
                   },
                   {
-                    "fieldName": "event"
+                    "fieldName": "event",
+                    "displayName": "Event"
                   },
                   {
-                    "fieldName": "evidence"
+                    "fieldName": "evidence",
+                    "displayName": "Evidence"
                   },
                   {
-                    "fieldName": "status"
+                    "fieldName": "status",
+                    "displayName": "Status"
                   }
                 ]
               },
@@ -3282,9 +3612,9 @@
             }
           },
           "position": {
-            "x": 0,
-            "y": 17,
-            "width": 12,
+            "x": 3,
+            "y": 12,
+            "width": 9,
             "height": 8
           }
         }
@@ -3295,7 +3625,86 @@
   ],
   "uiSettings": {
     "theme": {
-      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+      "canvasBackgroundColor": {
+        "light": "#F1F1EE",
+        "dark": "#0D0D0D"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FCFCFB",
+        "dark": "#1A1A19"
+      },
+      "widgetBorderColor": {
+        "light": "#E6E5DF",
+        "dark": "#2C2C2A"
+      },
+      "fontColor": {
+        "light": "#0B0B0B",
+        "dark": "#F0EFEC"
+      },
+      "selectionColor": {
+        "light": "#2A78D6",
+        "dark": "#3987E5"
+      },
+      "visualizationColors": [
+        "#2A78D6",
+        "#EB6834",
+        "#1BAF7A",
+        "#EDA100",
+        "#E87BA4",
+        "#008300",
+        "#6250D6",
+        "#E34948"
+      ],
+      "widgetHeaderAlignment": "LEFT",
+      "widgetCornerRadius": 8,
+      "widgetPadding": 16,
+      "widgetMargin": 8,
+      "gridLineColor": {
+        "light": "#E1E0D9",
+        "dark": "#2C2C2A"
+      },
+      "axisLineColor": {
+        "light": "#C3C2B7",
+        "dark": "#383835"
+      },
+      "fontSettings": {
+        "base": {
+          "fontSize": 14,
+          "fontWeight": 400,
+          "fontColor": {
+            "light": "#0B0B0B",
+            "dark": "#F0EFEC"
+          }
+        },
+        "widgetTitle": {
+          "fontSize": 15,
+          "fontWeight": 600
+        },
+        "widgetDescription": {
+          "fontSize": 13,
+          "fontWeight": 400,
+          "fontColor": {
+            "light": "#52514E",
+            "dark": "#C3C2B7"
+          }
+        },
+        "fieldTitle": {
+          "fontSize": 12,
+          "fontWeight": 500,
+          "fontColor": {
+            "light": "#52514E",
+            "dark": "#C3C2B7"
+          }
+        },
+        "fieldValue": {
+          "fontSize": 12,
+          "fontWeight": 400,
+          "fontColor": {
+            "light": "#52514E",
+            "dark": "#C3C2B7"
+          }
+        }
+      }
     },
     "applyModeEnabled": false
   }

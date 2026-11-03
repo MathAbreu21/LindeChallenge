@@ -1,7 +1,7 @@
 # LindeChallenge
 
 Mini-lakehouse for the Linde EMEA Data Engineer exercise: 224,670 order lines (one country, 2017-01-02 to 2022-11-21),
-built on Databricks Free Edition (serverless, Delta tables, Unity Catalog). Reporting reads the gold layer only.
+built on Databricks Free Edition (serverless, Delta tables, Unity Catalog). The sales report reads the gold layer only.
 
 ## Layers
 
@@ -10,7 +10,8 @@ built on Databricks Free Edition (serverless, Delta tables, Unity Catalog). Repo
 | Landing | `lindedata.raw` | The source file in the volume `lindechallenge`, as delivered | Never modified |
 | Bronze | `lindedata.bronze` | `bronze_orders`: raw copy in Delta plus audit columns | Append only; reconciled to control totals taken from the file |
 | Silver | `lindedata.silver` | `silver_orders`, `silver_orders_quarantine`, `dq_rule_results` | Typed, flagged, validated; rebuilt from bronze on every run |
-| Gold | `lindedata.gold` | Star schema (`dim_*`, `fct_order_line`) and one mart per report screen | The only layer reporting reads; the star schema is published only if its integrity rules pass |
+| Gold | `lindedata.gold` | Star schema (`dim_*`, `fct_order_line`) and one mart per report screen | The only layer the sales report reads; the star schema is published only if its integrity rules pass |
+| Ops | `lindedata.ops` | `job_runs`, `job_task_runs`, `table_history`, `table_inventory`: how the pipeline ran | Filled by `05_ops_snapshot`, read only by the data quality and pipeline dashboard |
 
 ## Notebooks
 
@@ -23,6 +24,7 @@ Run in order. Every notebook is safe to repeat.
 | `02_silver` | Types the data, applies the data quality rules, splits clean rows from quarantine, reconciles layers |
 | `03_gold_star` | Builds the star schema, checks its integrity (G01 to G07) and publishes only if every check passes |
 | `04_gold_marts` | Builds the marts and the metric catalog from the star schema, checks them against each other (M01 to M06) and against the figures in the report |
+| `05_ops_snapshot` | Records how the pipeline ran, for the dashboard: job runs and task runs from the Jobs API, every Delta commit of the pipeline tables attributed to the task that made it, and a table inventory. Run it after the job; repeat runs update in place |
 
 ## Star schema
 
@@ -93,21 +95,43 @@ The last cell of `04_gold_marts` is an **acceptance test**: the gold layer must 
 - **Governance in the catalog.** Every table and column has a comment (the data dictionary is generated from them) and tags.
 - **Scale by design.** Country, unit and currency are attributes, not assumptions, so a second country is data, not a rebuild.
 - **One definition per metric.** The comparable window lives in `dim_date`, every metric is documented in `metric_catalog`, and the reporting tool only sums and divides.
-- **Publish only if it is right.** The star schema checks run on the DataFrames before any table is written, so a failed run leaves the previous version in place. Mart checks and the acceptance test run right after the marts are built and stop the notebook, so a bad number never reaches the export step unnoticed.
+- **Publish only if it is right.** The star schema checks run on the DataFrames before any table is written, so a failed run leaves the previous version in place. Mart checks and the acceptance test run right after the marts are built and stop the notebook, so a bad number never reaches a dashboard unnoticed.
 - **Repeat runs are cheap.** A file already in bronze is not opened again, silver needs one aggregation pass plus the two
-  writes, rule results go in one commit, and column comments are written with the schema. Governance reads the catalog once
-  per notebook (`information_schema`) and issues DDL only for what differs. Independent tables are written at the same time
-  (`PARALLEL_WRITES` in `00_config`): the five star-schema tables in one wave, the marts in two. The star schema checks need
-  two passes over silver, the mart checks and the acceptance test share one query, and divisions are guarded with `NULLIF`
-  because serverless runs in ANSI mode.
+  writes, rule results go in one commit, and column comments are written with the schema, so governance issues no DDL
+  unless something changed in the code or the catalog. Gold follows the same rules: the star schema checks need three passes
+  over silver (totals, the fact joined to the four dimensions, the dimension keys), the mart checks and the acceptance test read
+  the marts in a handful of queries, and divisions are guarded with `NULLIF` because serverless runs in ANSI mode.
 
 ## Running as a job
 
-Four serverless tasks in order: `01_setup_bronze`, `02_silver`, `03_gold_star`, `04_gold_marts`. Nothing is installed at run time on the normal path: the native
-Excel reader (Databricks Runtime 17.1 or above) needs no extra package. `openpyxl` is only needed by the pandas fallback
+The job **Linde ETL** (ID 231937700218123) has four serverless tasks in a line: `01_setup_bronze`, `02_silver`, `03_gold_star`, `04_gold_marts`. `05_ops_snapshot` runs on demand, after the job.
+Nothing is installed at run time on the normal path: the native
+Excel reader (Databricks Runtime 17.1 or above) needs no extra package. `openpyxl` is needed only by the pandas fallback in 01,
 and is installed on demand when that path runs; to avoid even that, add `openpyxl` to the job's environment
-dependencies. `EXCEL_READER` in `00_config` forces one reader when the automatic choice is not wanted. `PARALLEL_WRITES` sets how
-many tables a notebook writes at the same time (default 4; set it to 1 to write one after the other).
+dependencies. `EXCEL_READER` in `00_config` forces one reader when the automatic choice is not wanted.
+
+What the job has today, read from the Jobs page on 2 Nov 2026: started by hand (no schedule or trigger), no notifications, no duration warning, no parameters, notebooks in a workspace folder with Git not configured. Fail-level data quality rules stop a run: silver and star schema rules before their tables are written, mart rules and the acceptance test right after the marts are built. Next steps, in the order I would take them: a trigger, a failure notification and duration warning, a Git folder with the job as code, parameters instead of constants in `00_config`, and a second job that runs `05_ops_snapshot` when this one finishes.
+
+## Pipeline observability
+
+`05_ops_snapshot` writes four tables to `lindedata.ops` (every table and column has a comment):
+
+| Table | Grain | Source |
+| --- | --- | --- |
+| `job_runs` | one row per run of the job | Jobs API, `jobs.list_runs(job_id, expand_tasks=True)` |
+| `job_task_runs` | one row per task of each run | Jobs API |
+| `table_history` | one row per Delta commit of every table the pipeline writes | `DESCRIBE HISTORY`; a commit is attributed to the task whose time window contains it (end + 2 s) |
+| `table_inventory` | one row per table, as of now | `DESCRIBE DETAIL` plus a row count |
+
+Things to know. Runs are upserted by id, so they stay after the Jobs API stops returning them (it keeps about 60 days); the history and the inventory are rebuilt from the Delta tables, which keep their log for the retention period of each table. A run still in progress is stored without an end time and corrected by the next snapshot, which is why the notebook is not a task of the job. The attribution is by time window, so a manual run of a notebook that happens during a job run would be attributed to that run. The "rows written" of a run is the sum of `numOutputRows` over its commits; it should match the figure on the Jobs page (224,678 for a run of Bronze and Silver, 487,486 for a run of all four tasks: both numbers were reproduced from the table row counts). The tests ran on a local Spark with the Jobs API and the Delta history simulated from the real runs, so the field names of the real API and history are the one thing to confirm on the first real run (the notebook prints the fields it received).
+
+## Reporting
+
+Looker Studio reads the gold tables through its Databricks connector (server hostname, a SQL warehouse, and a personal access token entered as the password with user `token`). The connector takes **one SQL statement per data source**, so `reporting/looker/` holds the seven the report uses, one file each, with nothing in the file but the statement to paste (see `reporting/README.md`). They only select, reshape and rename: the marts are already at report grain and no business logic lives in the BI tool. The reshaping is the stacking of waterfall steps into rows, a product lookup, and customer ids cast to text.
+
+The native Databricks AI/BI dashboard reads the same marts through the datasets in `reporting/databricks/`; the Genie prompt that builds its pages is in `reporting/databricks/genie_prompt.md`.
+
+A second dashboard, **Linde ETL - Data quality and pipeline health**, reads `dq_rule_results`, the layers (row and value reconciliation, flagged lines by year, freshness), `information_schema` (comment coverage) and `lindedata.ops`. Its 13 datasets are in `reporting/databricks_dq/` and the Genie prompt that builds its six pages is `reporting/databricks_dq/genie_prompt_dq.md`.
 
 ## Not in this repository
 
