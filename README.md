@@ -44,6 +44,16 @@ Each rule is code with an explicit consequence, and every run logs one row per r
 - **Nothing disappears.** Rows that break a quarantine rule go to a table with the rule id; layers reconcile in rows and value.
 - **Governance in the catalog.** Every table and column has a comment (the data dictionary is generated from them) and tags.
 - **Scale by design.** Country, unit and currency are attributes, not assumptions, so a second country is data, not a rebuild.
+- **Repeat runs are cheap.** A file already in bronze is not opened again, silver needs one aggregation pass plus the two
+  writes, rule results go in one commit, and column comments are written with the schema, so governance issues no DDL
+  unless something changed in the code or the catalog.
+
+## Running as a job
+
+Two serverless tasks, `01_setup_bronze` then `02_silver`. Nothing is installed at run time on the normal path: the native
+Excel reader (Databricks Runtime 17.1 or above) needs no extra package. `openpyxl` is only needed by the pandas fallback
+and is installed on demand when that path runs; to avoid even that, add `openpyxl` to the job's environment
+dependencies. `EXCEL_READER` in `00_config` forces one reader when the automatic choice is not wanted.
 
 ## Not in this repository
 

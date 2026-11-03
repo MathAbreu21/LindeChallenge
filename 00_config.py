@@ -19,6 +19,7 @@ CATALOG = "lindedata"
 RAW_SCHEMA = "raw"                 # landing zone: source files exactly as delivered
 LANDING_VOLUME = "lindechallenge"  # volume inside the raw schema
 SOURCE_FILE = ""                   # leave empty to auto-detect the single .xlsx/.csv in the volume
+EXCEL_READER = "auto"              # "auto": native reader, pandas if it is not usable · "native" · "pandas"
 
 LANDING_DIR = f"/Volumes/{CATALOG}/{RAW_SCHEMA}/{LANDING_VOLUME}"
 
@@ -66,19 +67,66 @@ def sql_str(text):
     return text.replace("'", "''")
 
 
+def with_comments(df, column_comments):
+    """Attach column comments to the DataFrame schema.
+
+    A Delta table written from this DataFrame is created with the comments already in place. The alternative,
+    one ALTER TABLE ... ALTER COLUMN per column after the write, is a Delta commit plus a catalog round trip
+    each (about a second on serverless), and the old version of the pipeline issued around 75 of them per run."""
+    return df.select([
+        F.col(c).alias(c, metadata={"comment": column_comments[c]}) if c in column_comments else F.col(c)
+        for c in df.columns
+    ])
+
+
+def describe_governance(table):
+    """Table comment and column comments as the catalog holds them now, from one DESCRIBE call."""
+    columns, table_comment, in_columns = {}, "", True
+    for r in spark.sql(f"DESCRIBE TABLE EXTENDED {table}").collect():
+        name = (r["col_name"] or "").strip()
+        if in_columns:
+            if not name or name.startswith("#"):
+                in_columns = False  # end of the column section
+            else:
+                columns[name] = r["comment"] or ""
+        elif name == "Comment":
+            table_comment = r["data_type"] or ""
+    return table_comment, columns
+
+
+def current_tags(table):
+    """Tags the catalog holds for a table, from one information_schema query."""
+    catalog, schema, name = table.split(".")
+    rows = spark.sql(
+        f"SELECT tag_name, tag_value FROM {catalog}.information_schema.table_tags "
+        f"WHERE schema_name = '{sql_str(schema)}' AND table_name = '{sql_str(name)}'"
+    ).collect()
+    return {r["tag_name"]: r["tag_value"] for r in rows}
+
+
 def apply_governance(table, table_comment, column_comments, tags):
     """Table comment, column comments and tags. The data dictionary is generated from these.
+
+    Only what differs from the catalog is changed. A table written through with_comments() normally needs
+    nothing: the cost is two reads, not one DDL statement per column.
     Tags are best effort: tag support on Free Edition is still to be validated."""
-    spark.sql(f"COMMENT ON TABLE {table} IS '{sql_str(table_comment)}'")
-    existing = {f.name for f in spark.table(table).schema.fields}
+    current_comment, current_columns = describe_governance(table)
+    changed = []
+    if current_comment != table_comment:
+        spark.sql(f"COMMENT ON TABLE {table} IS '{sql_str(table_comment)}'")
+        changed.append("table comment")
     for col, text in column_comments.items():
-        if col in existing:
+        if col in current_columns and current_columns[col] != text:
             spark.sql(f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{sql_str(text)}'")
-    tag_sql = ", ".join(f"'{sql_str(k)}' = '{sql_str(v)}'" for k, v in tags.items())
+            changed.append(col)
     try:
-        spark.sql(f"ALTER TABLE {table} SET TAGS ({tag_sql})")
+        if any(current_tags(table).get(k) != v for k, v in tags.items()):
+            tag_sql = ", ".join(f"'{sql_str(k)}' = '{sql_str(v)}'" for k, v in tags.items())
+            spark.sql(f"ALTER TABLE {table} SET TAGS ({tag_sql})")
+            changed.append("tags")
     except Exception as exc:
         print(f"Tags not applied to {table} (to be validated on Free Edition): {str(exc)[:160]}")
+    print(f"Governance on {table}: " + (", ".join(changed) if changed else "up to date, no DDL issued"))
 
 
 def resolve_source_file():
