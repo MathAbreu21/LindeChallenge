@@ -18,10 +18,9 @@
 # MAGIC
 # MAGIC The comparable window (Jan 1 to the latest date in the data, in every year) comes from `dim_date.is_in_comparable_window`.
 # MAGIC
-# MAGIC Shape of the run: the marts are defined first and written in two waves of concurrent writes (the second wave holds what reads a
-# MAGIC wave-one mart), the cross-mart checks and the acceptance figures come back from one query, and governance reads the catalog
-# MAGIC once for all tables and issues DDL only for what differs. Divisions are guarded with `NULLIF`, because serverless runs in ANSI
-# MAGIC mode, where a division by zero is an error.
+# MAGIC Shape of the run: one write per table with its column comments in the schema, no read-back after a write, the cross-mart checks
+# MAGIC in one query, the acceptance test in three, and governance that issues DDL only for what differs from the catalog.
+# MAGIC Divisions are guarded with `NULLIF`, because serverless runs in ANSI mode, where a division by zero is an error.
 
 # COMMAND ----------
 
@@ -53,8 +52,7 @@ PAIR_COMMENTS = {"base_year": "Year the comparison starts from.", "current_year"
 # MAGIC %md
 # MAGIC ## Analysis views
 # MAGIC `all_lines` is the fact joined to its dimensions. `lfl_lines` keeps only the comparable window. Both are lazy views: they cost nothing
-# MAGIC until a mart reads them, and Delta reads only the columns each mart uses. The marts below are defined as SQL text and written
-# MAGIC together in the Publish step.
+# MAGIC until a mart reads them, and Delta reads only the columns each mart uses.
 
 # COMMAND ----------
 
@@ -73,8 +71,7 @@ JOIN {T_DIM_CHANNEL} ch ON ch.channel_key = f.channel_key
 """)
 spark.sql("CREATE OR REPLACE TEMP VIEW lfl_lines AS SELECT * FROM all_lines WHERE is_in_comparable_window")
 
-# First and last order date from the channel dimension (a handful of rows) instead of a pass over the joined fact.
-bounds = spark.sql(f"SELECT MIN(first_order_date) AS min_date, MAX(last_order_date) AS max_date FROM {T_DIM_CHANNEL}").first()
+bounds = spark.sql("SELECT MIN(date) AS min_date, MAX(date) AS max_date FROM all_lines").first()
 MIN_DATE, MAX_DATE = bounds["min_date"], bounds["max_date"]
 print(f"Fact covers {MIN_DATE} to {MAX_DATE}")
 
@@ -102,7 +99,7 @@ KPI_COMMENTS = {
     "revenue_yoy_pct": "Revenue change against the previous year, same window, in percent.",
 }
 
-KPI_SQL = f"""
+write_delta(spark.sql(f"""
 WITH y AS (
   SELECT year, SUM(quantity) AS cylinders, SUM(order_value) AS revenue,
          COUNT(DISTINCT order_no) AS orders, COUNT(DISTINCT customer_id) AS customers
@@ -124,7 +121,7 @@ SELECT year, window_start, window_end, cylinders,
        ROUND(100.0 * customers / NULLIF(FIRST_VALUE(customers) OVER (ORDER BY year), 0), 1) AS idx_customers,
        ROUND(100.0 * (revenue / NULLIF(LAG(revenue) OVER (ORDER BY year), 0) - 1), 1) AS revenue_yoy_pct
 FROM k ORDER BY year
-"""
+"""), T_MART_KPI_YTD, KPI_COMMENTS)
 
 # COMMAND ----------
 
@@ -163,7 +160,7 @@ PVM_BRIDGE_COMMENTS = {
     "price_offsets_volume_loss_pct": "Price effect as a percentage of the volume loss (null when volume did not fall).",
 }
 
-PVM_SKU_SQL = """
+write_delta(spark.sql("""
 WITH s AS (
   SELECT year, product_id, SUM(quantity) AS q, CAST(SUM(order_value) AS DOUBLE) AS v
   FROM lfl_lines WHERE is_price_basis GROUP BY year, product_id),
@@ -194,9 +191,9 @@ SELECT base_year, current_year, product_id,
        CAST((q_cur - q1_total * q_base / NULLIF(q0_total, 0)) * p0 AS DECIMAL(18,4)) AS mix_effect,
        CAST(q_cur * (p1 - p0) AS DECIMAL(18,4)) AS price_effect
 FROM u
-"""
+"""), T_MART_PVM_SKU, PVM_SKU_COMMENTS)
 
-PVM_BRIDGE_SQL = f"""
+write_delta(spark.sql(f"""
 SELECT base_year, current_year,
        CAST(SUM(revenue_base) AS DECIMAL(18,2)) AS revenue_base,
        CAST(SUM(volume_effect) AS DECIMAL(18,2)) AS volume_effect,
@@ -208,7 +205,7 @@ SELECT base_year, current_year,
 FROM {T_MART_PVM_SKU}
 GROUP BY base_year, current_year
 ORDER BY base_year, current_year
-"""
+"""), T_MART_PVM_BRIDGE, PVM_BRIDGE_COMMENTS)
 
 # COMMAND ----------
 
@@ -234,7 +231,7 @@ ANATOMY_COMMENTS = {
     "bar_rest_of_portfolio": "Revenue change of everything else.",
 }
 
-ANATOMY_SQL = """
+write_delta(spark.sql("""
 WITH cy AS (
   SELECT year, customer_id, SUM(order_value) AS rev,
          SUM(CASE WHEN is_helium THEN order_value ELSE 0 END) AS rev_he
@@ -273,7 +270,7 @@ SELECT base_year, current_year,
        CAST((he_cur - he_base) - (top_he_cur - top_he_base) AS DECIMAL(18,2)) AS bar_helium_excl_top_customer,
        CAST((tot_cur - tot_base) - (top_cur - top_base) - ((he_cur - he_base) - (top_he_cur - top_he_base)) AS DECIMAL(18,2)) AS bar_rest_of_portfolio
 FROM agg ORDER BY base_year, current_year
-"""
+"""), T_MART_GROWTH_ANATOMY, ANATOMY_COMMENTS)
 
 # COMMAND ----------
 
@@ -298,7 +295,7 @@ CUSTOMER_YEAR_COMMENTS = {
     "is_new_24m": "True when the customer had no order in the 24 months before Jan 1 of the year; null while the data has no full lookback.",
 }
 
-CUSTOMER_YEAR_SQL = f"""
+write_delta(spark.sql(f"""
 WITH cy AS (
   SELECT year, customer_id, SUM(quantity) AS cylinders, SUM(order_value) AS revenue, COUNT(DISTINCT order_no) AS orders
   FROM lfl_lines GROUP BY year, customer_id),
@@ -332,7 +329,7 @@ JOIN {T_DIM_CUSTOMER} cu ON cu.customer_id = c.customer_id
 CROSS JOIN b
 LEFT JOIN cy p ON p.customer_id = c.customer_id AND p.year = c.year - 1
 LEFT JOIN prior24 pr ON pr.year = c.year AND pr.customer_id = c.customer_id
-"""
+"""), T_MART_CUSTOMER_YEAR, CUSTOMER_YEAR_COMMENTS)
 
 # COMMAND ----------
 
@@ -362,7 +359,7 @@ CUSTOMER_BRIDGE_COMMENTS = {
     "retention_pct": "Retained customers as a percentage of base-year customers.",
 }
 
-CUSTOMER_BRIDGE_SQL = """
+write_delta(spark.sql("""
 WITH cy AS (SELECT year, customer_id, SUM(quantity) AS q FROM lfl_lines GROUP BY year, customer_id),
 fa AS (SELECT customer_id, MIN(year) AS first_year FROM cy GROUP BY customer_id),
 yrs AS (SELECT DISTINCT year FROM cy),
@@ -403,7 +400,7 @@ SELECT base_year, current_year,
        ROUND(100.0 * COUNT(CASE WHEN cat IN ('retained_up', 'retained_down') THEN 1 END)
              / NULLIF(COUNT(CASE WHEN qa > 0 THEN 1 END), 0), 1) AS retention_pct
 FROM c GROUP BY base_year, current_year ORDER BY base_year, current_year
-"""
+"""), T_MART_CUSTOMER_BRIDGE, CUSTOMER_BRIDGE_COMMENTS)
 
 # COMMAND ----------
 
@@ -427,7 +424,7 @@ CADENCE_COMMENTS = {
     "returned_next_12m": "Backtest only: whether the customer ordered again in the following 12 months.",
 }
 
-CADENCE_SQL = f"""
+write_delta(spark.sql(f"""
 WITH cut AS (
   SELECT DATE'{MAX_DATE}' AS cutoff, 'current' AS scope
   UNION ALL SELECT add_months(DATE'{MAX_DATE}', -12), 'backtest'),
@@ -450,20 +447,25 @@ SELECT a.scope, a.cutoff AS as_of_date, a.customer_id, a.order_days, a.last_orde
        DATEDIFF(a.cutoff, a.last_order_date) > GREATEST({SILENCE_MULTIPLIER} * a.median_gap_days, {MIN_SILENCE_DAYS}) AS is_overdue,
        CASE WHEN a.scope = 'backtest' THEN f.customer_id IS NOT NULL END AS returned_next_12m
 FROM a LEFT JOIN fut f ON f.customer_id = a.customer_id
-"""
+"""), T_MART_CUSTOMER_CADENCE, CADENCE_COMMENTS)
 
-CADENCE_VIEW_SQL = f"""
-CREATE OR REPLACE VIEW {V_CADENCE_BACKTEST} AS
+spark.sql(f"""
+CREATE OR REPLACE VIEW {V_CADENCE_BACKTEST} (
+  is_overdue COMMENT 'True when silent for more than twice the median gap (and at least 45 days) at the backtest date.',
+  customers COMMENT 'Customers in the group.',
+  returned_next_12m_pct COMMENT 'Share of the group that ordered again within 12 months, in percent.',
+  revenue_24m COMMENT 'Revenue in the 24-month window before the backtest date, in EUR.'
+) COMMENT 'Backtest of the overdue rule: did flagged customers come back within 12 months, compared with the others.' AS
 SELECT is_overdue, COUNT(*) AS customers,
        ROUND(100.0 * AVG(CAST(returned_next_12m AS INT)), 1) AS returned_next_12m_pct,
        SUM(revenue_24m) AS revenue_24m
 FROM {T_MART_CUSTOMER_CADENCE} WHERE scope = 'backtest' GROUP BY is_overdue
-"""
+""")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## mart_channel_month
+# MAGIC ## mart_channel_month and ref_channel_events
 # MAGIC Dense by month and channel (zeros included) so a stacked area chart is correct. An order always belongs to one channel in this data, so
 # MAGIC `share_of_month_orders_pct` adds up to 100 within a month. Channel labels changed in Nov 2020, so channel mix across that date is not comparable.
 
@@ -481,7 +483,7 @@ CHANNEL_MONTH_COMMENTS = {
     "share_of_month_orders_pct": "Channel share of the month's orders, in percent.",
 }
 
-CHANNEL_MONTH_SQL = f"""
+write_delta(spark.sql(f"""
 WITH months AS (
   SELECT DISTINCT year_month FROM {T_DIM_DATE} WHERE date BETWEEN DATE'{MIN_DATE}' AND DATE'{MAX_DATE}'),
 ch AS (SELECT channel_name, is_attributed FROM {T_DIM_CHANNEL}),
@@ -500,7 +502,40 @@ SELECT year_month, to_date(concat(year_month, '-01')) AS month_start, channel_na
        orders, customers, cylinders, CAST(revenue AS DECIMAL(18,2)) AS revenue,
        ROUND(100.0 * orders / NULLIF(SUM(orders) OVER (PARTITION BY year_month), 0), 1) AS share_of_month_orders_pct
 FROM f ORDER BY year_month, channel_name
-"""
+"""), T_MART_CHANNEL_MONTH, CHANNEL_MONTH_COMMENTS)
+
+# What to mark on the channel chart. The first event is read from the data (one query); the second is a hypothesis to confirm.
+unknown = spark.sql(f"""
+SELECT MIN(CASE WHEN channel_name = '{UNKNOWN_CHANNEL}' AND orders > 0 THEN year_month END) AS first_month,
+       ROUND(100.0 * SUM(CASE WHEN channel_name = '{UNKNOWN_CHANNEL}' AND year_month >= '{MAX_DATE.year}-01' THEN orders ELSE 0 END)
+             / NULLIF(SUM(CASE WHEN year_month >= '{MAX_DATE.year}-01' THEN orders ELSE 0 END), 0), 0) AS share_last_year
+FROM {T_MART_CHANNEL_MONTH}
+""").first()
+
+events = []
+if unknown["first_month"] is not None:
+    share_text = f" It grows from zero to about {int(unknown['share_last_year'])}% of orders in {MAX_DATE.year}." if unknown["share_last_year"] is not None else ""
+    events.append((unknown["first_month"], UNKNOWN_CHANNEL, "UNKNOWN SOURCE appears",
+                   f"First order with this label in the data.{share_text}", "observed"))
+events.append((
+    "2020-11", "PHONECALL / RETAIL SHOP", "Orders shift from PHONECALL to RETAIL SHOP",
+    "PHONECALL falls and RETAIL SHOP rises sharply from Nov 2020, and the shift partly reverses in Feb 2021. "
+    "It looks like a label or process change rather than customer behavior; confirm with the business before using channel in a decision.",
+    "hypothesis",
+))
+events.sort()
+
+CHANNEL_EVENTS_COMMENTS = {
+    "event_month": "Month of the event (yyyy-MM).",
+    "channel": "Channel(s) involved.",
+    "event": "Short name.",
+    "evidence": "What the data shows.",
+    "status": "observed or hypothesis.",
+}
+write_delta(
+    spark.createDataFrame(events, "event_month string, channel string, event string, evidence string, status string"),
+    T_REF_CHANNEL_EVENTS, CHANNEL_EVENTS_COMMENTS,
+)
 
 # COMMAND ----------
 
@@ -540,130 +575,39 @@ METRIC_CATALOG_COMMENTS = {
     "scope": "Rows the metric covers.",
     "caveat": "What to keep in mind when reading it.",
 }
-metric_catalog_df = spark.createDataFrame(
-    metrics,
-    "metric_id string, metric_name string, definition string, unit string, grain string, source_table string, source_column string, scope string, caveat string",
-)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Publish
-# MAGIC Two waves of concurrent writes (`PARALLEL_WRITES` in `00_config`). Wave one: every mart that reads the star schema only, plus the
-# MAGIC metric catalog. Wave two: what reads a wave-one mart (`mart_pvm_bridge`, the backtest view). Each table is rebuilt whole with its
-# MAGIC column comments in the schema (`write_delta` in `00_config`).
-
-# COMMAND ----------
-
-write_delta_many([
-    (KPI_SQL, T_MART_KPI_YTD, KPI_COMMENTS),
-    (PVM_SKU_SQL, T_MART_PVM_SKU, PVM_SKU_COMMENTS),
-    (ANATOMY_SQL, T_MART_GROWTH_ANATOMY, ANATOMY_COMMENTS),
-    (CUSTOMER_YEAR_SQL, T_MART_CUSTOMER_YEAR, CUSTOMER_YEAR_COMMENTS),
-    (CUSTOMER_BRIDGE_SQL, T_MART_CUSTOMER_BRIDGE, CUSTOMER_BRIDGE_COMMENTS),
-    (CADENCE_SQL, T_MART_CUSTOMER_CADENCE, CADENCE_COMMENTS),
-    (CHANNEL_MONTH_SQL, T_MART_CHANNEL_MONTH, CHANNEL_MONTH_COMMENTS),
-    (metric_catalog_df, T_METRIC_CATALOG, METRIC_CATALOG_COMMENTS),
-])
-run_parallel([
-    lambda: write_delta(spark.sql(PVM_BRIDGE_SQL), T_MART_PVM_BRIDGE, PVM_BRIDGE_COMMENTS),
-    lambda: spark.sql(CADENCE_VIEW_SQL),
-])
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## One query for the checks and the report figures
-# MAGIC The marts must agree with each other and with the fact (M01 to M06), and the gold layer must reproduce the figures quoted in the
-# MAGIC report. Every number both tests need, plus the channel event read from the data, comes back from one query of scalar subqueries
-# MAGIC over the marts (a struct or an array carries several values), instead of one round trip per table.
-
-# COMMAND ----------
-
-def scalar_query(subqueries):
-    """Run several small queries as scalar subqueries of one SELECT: one round trip instead of one per query.
-    subqueries: {name: SQL that returns one row and one column; struct() or collect_list() carry several values}."""
-    sql = "SELECT\n  " + ",\n  ".join(f"({q}) AS `{name}`" for name, q in subqueries.items())
-    return spark.sql(sql).first().asDict()
-
-
-m = scalar_query({
-    # Cross-mart checks (M01 to M06)
-    "pairs": f"SELECT COUNT(*) FROM {T_MART_PVM_BRIDGE}",
-    "m01": f"SELECT COUNT(*) FROM {T_MART_PVM_BRIDGE} WHERE ABS(closing_difference) > 0.01",
-    "m02": f"SELECT COUNT(*) FROM {T_MART_CUSTOMER_BRIDGE} WHERE closing_difference <> 0",
-    "m03": f"""SELECT COUNT(*) FROM {T_MART_GROWTH_ANATOMY}
-               WHERE ABS(bar_top_customer + bar_helium_excl_top_customer + bar_rest_of_portfolio - revenue_delta) > 0.01""",
-    "kpi_full_year": f"SELECT SUM(revenue_full_year) FROM {T_MART_KPI_YTD}",
-    "fact_value": f"SELECT SUM(order_value) FROM {T_FCT_ORDER_LINE}",
-    "years": f"SELECT COUNT(*) FROM {T_MART_KPI_YTD}",
-    "m05": f"""SELECT COUNT(*) FROM {T_MART_KPI_YTD} k
-               JOIN (SELECT year, SUM(revenue) AS r FROM {T_MART_CUSTOMER_YEAR} GROUP BY year) c ON c.year = k.year
-               WHERE ABS(k.revenue - c.r) > 0.01""",
-    "m06": f"""SELECT COUNT(*) FROM (SELECT year_month FROM {T_MART_CHANNEL_MONTH}
-               GROUP BY year_month HAVING ABS(SUM(share_of_month_orders_pct) - 100) > 0.5)""",
-    "months": f"SELECT COUNT(DISTINCT year_month) FROM {T_MART_CHANNEL_MONTH}",
-    # Channel event read from the data (ref_channel_events)
-    "unknown_channel": f"""SELECT struct(
-          MIN(CASE WHEN channel_name = '{UNKNOWN_CHANNEL}' AND orders > 0 THEN year_month END) AS first_month,
-          ROUND(100.0 * SUM(CASE WHEN channel_name = '{UNKNOWN_CHANNEL}' AND year_month >= '{MAX_DATE.year}-01' THEN orders ELSE 0 END)
-                / NULLIF(SUM(CASE WHEN year_month >= '{MAX_DATE.year}-01' THEN orders ELSE 0 END), 0), 0) AS share_last_year)
-        FROM {T_MART_CHANNEL_MONTH}""",
-    # Figures for the acceptance test
-    "kpi_rows": f"SELECT collect_list(struct(year, cylinders, revenue, orders, customers, price_per_cylinder)) FROM {T_MART_KPI_YTD}",
-    "bridge_2017_2022": f"""SELECT struct(revenue_base, volume_effect, mix_effect, price_effect, revenue_current)
-        FROM {T_MART_PVM_BRIDGE} WHERE base_year = 2017 AND current_year = 2022""",
-    "anatomy_2021_2022": f"""SELECT struct(top_customer_id, top_customer_share_of_growth_pct, growth_ex_top_customer_pct, growth_ex_helium_pct)
-        FROM {T_MART_GROWTH_ANATOMY} WHERE base_year = 2021 AND current_year = 2022""",
-    "new_2019": f"SELECT COUNT(*) FROM {T_MART_CUSTOMER_YEAR} WHERE year = 2019 AND is_new_24m",
-    "new_2022": f"SELECT COUNT(*) FROM {T_MART_CUSTOMER_YEAR} WHERE year = 2022 AND is_new_24m",
-    "overdue_now": f"SELECT COUNT(*) FROM {T_MART_CUSTOMER_CADENCE} WHERE scope = 'current' AND is_overdue",
-    "backtest_overdue_returned": f"SELECT returned_next_12m_pct FROM {V_CADENCE_BACKTEST} WHERE is_overdue",
-    "backtest_other_returned": f"SELECT returned_next_12m_pct FROM {V_CADENCE_BACKTEST} WHERE NOT is_overdue",
-})
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## ref_channel_events
-# MAGIC What to mark on the channel chart. The first event is read from the data (in the query above); the second is a hypothesis to confirm.
-
-# COMMAND ----------
-
-unknown = m["unknown_channel"]  # read in the query above
-
-events = []
-if unknown["first_month"] is not None:
-    share_text = f" It grows from zero to about {int(unknown['share_last_year'])}% of orders in {MAX_DATE.year}." if unknown["share_last_year"] is not None else ""
-    events.append((unknown["first_month"], UNKNOWN_CHANNEL, "UNKNOWN SOURCE appears",
-                   f"First order with this label in the data.{share_text}", "observed"))
-events.append((
-    "2020-11", "PHONECALL / RETAIL SHOP", "Orders shift from PHONECALL to RETAIL SHOP",
-    "PHONECALL falls and RETAIL SHOP rises sharply from Nov 2020, and the shift partly reverses in Feb 2021. "
-    "It looks like a label or process change rather than customer behavior; confirm with the business before using channel in a decision.",
-    "hypothesis",
-))
-events.sort()
-
-CHANNEL_EVENTS_COMMENTS = {
-    "event_month": "Month of the event (yyyy-MM).",
-    "channel": "Channel(s) involved.",
-    "event": "Short name.",
-    "evidence": "What the data shows.",
-    "status": "observed or hypothesis.",
-}
 write_delta(
-    spark.createDataFrame(events, "event_month string, channel string, event string, evidence string, status string"),
-    T_REF_CHANNEL_EVENTS, CHANNEL_EVENTS_COMMENTS,
+    spark.createDataFrame(
+        metrics,
+        "metric_id string, metric_name string, definition string, unit string, grain string, source_table string, source_column string, scope string, caveat string",
+    ),
+    T_METRIC_CATALOG, METRIC_CATALOG_COMMENTS,
 )
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Checks across the marts (fail-level)
-# MAGIC Results are logged in `dq_rule_results` (`layer = 'gold'`); the run stops here if any check fails.
+# MAGIC The marts must agree with each other and with the fact. One query gives every number; results are logged in `dq_rule_results` (`layer = 'gold'`).
 
 # COMMAND ----------
+
+m = spark.sql(f"""
+SELECT
+  (SELECT COUNT(*) FROM {T_MART_PVM_BRIDGE}) AS pairs,
+  (SELECT COUNT(*) FROM {T_MART_PVM_BRIDGE} WHERE ABS(closing_difference) > 0.01) AS m01,
+  (SELECT COUNT(*) FROM {T_MART_CUSTOMER_BRIDGE} WHERE closing_difference <> 0) AS m02,
+  (SELECT COUNT(*) FROM {T_MART_GROWTH_ANATOMY}
+     WHERE ABS(bar_top_customer + bar_helium_excl_top_customer + bar_rest_of_portfolio - revenue_delta) > 0.01) AS m03,
+  (SELECT SUM(revenue_full_year) FROM {T_MART_KPI_YTD}) AS kpi_full_year,
+  (SELECT SUM(order_value) FROM {T_FCT_ORDER_LINE}) AS fact_value,
+  (SELECT COUNT(*) FROM {T_MART_KPI_YTD}) AS years,
+  (SELECT COUNT(*) FROM {T_MART_KPI_YTD} k
+     JOIN (SELECT year, SUM(revenue) AS r FROM {T_MART_CUSTOMER_YEAR} GROUP BY year) c ON c.year = k.year
+     WHERE ABS(k.revenue - c.r) > 0.01) AS m05,
+  (SELECT COUNT(*) FROM (SELECT year_month FROM {T_MART_CHANNEL_MONTH}
+     GROUP BY year_month HAVING ABS(SUM(share_of_month_orders_pct) - 100) > 0.5)) AS m06,
+  (SELECT COUNT(DISTINCT year_month) FROM {T_MART_CHANNEL_MONTH}) AS months
+""").first().asDict()
 
 rules = [
     dq_result("gold", "M01_pvm_closes", "Volume + mix + price add up to the revenue change for every pair of years", "fail", m["m01"], m["pairs"]),
@@ -681,7 +625,7 @@ log_and_enforce(rules)
 # MAGIC %md
 # MAGIC ## Acceptance test: gold reproduces the figures in the report
 # MAGIC The figures quoted in the report were computed independently with pandas. The gold layer has to give the same numbers.
-# MAGIC Every input was read in the query above.
+# MAGIC Three reads: the KPI mart (6 rows), the 2017 to 2022 bridge and the 2021 to 2022 anatomy (one row each), and one query for the customer counts.
 
 # COMMAND ----------
 
@@ -691,10 +635,17 @@ def need(row, what):
     return row
 
 
-kpi_by_year = {r["year"]: r for r in (m["kpi_rows"] or [])}
-bridge = need(m["bridge_2017_2022"], "the 2017 to 2022 bridge")
-anatomy = need(m["anatomy_2021_2022"], "the 2021 to 2022 anatomy")
-counts = m  # new_2019, new_2022, overdue_now, backtest_overdue_returned, backtest_other_returned
+kpi_by_year = {r["year"]: r for r in spark.table(T_MART_KPI_YTD).collect()}
+bridge = need(spark.table(T_MART_PVM_BRIDGE).where("base_year = 2017 AND current_year = 2022").first(), "the 2017 to 2022 bridge")
+anatomy = need(spark.table(T_MART_GROWTH_ANATOMY).where("base_year = 2021 AND current_year = 2022").first(), "the 2021 to 2022 anatomy")
+counts = spark.sql(f"""
+SELECT
+  (SELECT COUNT(*) FROM {T_MART_CUSTOMER_YEAR} WHERE year = 2019 AND is_new_24m) AS new_2019,
+  (SELECT COUNT(*) FROM {T_MART_CUSTOMER_YEAR} WHERE year = 2022 AND is_new_24m) AS new_2022,
+  (SELECT COUNT(*) FROM {T_MART_CUSTOMER_CADENCE} WHERE scope = 'current' AND is_overdue) AS overdue_now,
+  (SELECT returned_next_12m_pct FROM {V_CADENCE_BACKTEST} WHERE is_overdue) AS backtest_overdue_returned,
+  (SELECT returned_next_12m_pct FROM {V_CADENCE_BACKTEST} WHERE NOT is_overdue) AS backtest_other_returned
+""").first().asDict()
 
 # Comparable-window KPIs by year, as computed independently with pandas: (cylinders, revenue, orders, customers)
 REPORT_KPIS = {
@@ -746,53 +697,61 @@ if ENFORCE_REPORT_FIGURES:
 
 # MAGIC %md
 # MAGIC ## Governance: comments and tags
-# MAGIC One catalog read for the ten tables; only differences are applied. Column comments were written with the schema,
-# MAGIC so a normal run issues at most a table comment.
+# MAGIC Compared with the catalog first; only differences are applied. Column comments were written with the schema,
+# MAGIC so a normal run issues at most the table comment.
 
 # COMMAND ----------
 
-apply_governance_batch([
-    (T_MART_KPI_YTD,
-     "Headline numbers by year in the comparable window, plus the index with the first year = 100. Feeds the Opening and Trend screens.",
-     KPI_COMMENTS,
-     MART_TAGS),
-    (T_MART_PVM_SKU,
-     "Price, volume and mix effects by SKU for every pair of years (comparable window, price-basis lines). The three effects add up to the revenue change.",
-     PVM_SKU_COMMENTS,
-     MART_TAGS),
-    (T_MART_PVM_BRIDGE,
-     "The price-volume-mix bridge by pair of years: the table behind the waterfall chart.",
-     PVM_BRIDGE_COMMENTS,
-     MART_TAGS),
-    (T_MART_GROWTH_ANATOMY,
-     "What is behind revenue growth, by pair of years: the top-gaining customer, helium sold to everyone else, and the rest. The three bars add up to the revenue change.",
-     ANATOMY_COMMENTS,
-     MART_TAGS),
-    (T_MART_CUSTOMER_YEAR,
-     "One row per customer id and year (comparable window): activity, status against the previous year, dominant segment and the 24-month new-customer flag.",
-     CUSTOMER_YEAR_COMMENTS,
-     MART_TAGS),
-    (T_MART_CUSTOMER_BRIDGE,
-     "The cylinder bridge by pair of years: lost, new, win-back and retained customers (buying more or less), plus retention. Closes exactly.",
-     CUSTOMER_BRIDGE_COMMENTS,
-     MART_TAGS),
-    (T_MART_CUSTOMER_CADENCE,
-     "Customers who ordered on at least 4 days in the last 24 months, with their own ordering rhythm and whether they are overdue. Two as-of dates: current and a 12-month backtest.",
-     CADENCE_COMMENTS,
-     MART_TAGS),
-    (T_MART_CHANNEL_MONTH,
-     "Orders, customers, cylinders and revenue by month and channel, with zeros included. Channel labels changed in Nov 2020; see ref_channel_events.",
-     CHANNEL_MONTH_COMMENTS,
-     MART_TAGS),
-    (T_REF_CHANNEL_EVENTS,
-     "Events worth marking on the channel chart. Status says whether an event is observed in the data or is a hypothesis to confirm.",
-     CHANNEL_EVENTS_COMMENTS,
-     REF_TAGS),
-    (T_METRIC_CATALOG,
-     "Data dictionary for numbers: every metric used by the report, its definition, where it lives and what to watch for.",
-     METRIC_CATALOG_COMMENTS,
-     REF_TAGS),
-])
+apply_governance(
+    T_MART_KPI_YTD,
+    "Headline numbers by year in the comparable window, plus the index with the first year = 100. Feeds the Opening and Trend screens.",
+    KPI_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_MART_PVM_SKU,
+    "Price, volume and mix effects by SKU for every pair of years (comparable window, price-basis lines). The three effects add up to the revenue change.",
+    PVM_SKU_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_MART_PVM_BRIDGE,
+    "The price-volume-mix bridge by pair of years: the table behind the waterfall chart.",
+    PVM_BRIDGE_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_MART_GROWTH_ANATOMY,
+    "What is behind revenue growth, by pair of years: the top-gaining customer, helium sold to everyone else, and the rest. The three bars add up to the revenue change.",
+    ANATOMY_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_MART_CUSTOMER_YEAR,
+    "One row per customer id and year (comparable window): activity, status against the previous year, dominant segment and the 24-month new-customer flag.",
+    CUSTOMER_YEAR_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_MART_CUSTOMER_BRIDGE,
+    "The cylinder bridge by pair of years: lost, new, win-back and retained customers (buying more or less), plus retention. Closes exactly.",
+    CUSTOMER_BRIDGE_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_MART_CUSTOMER_CADENCE,
+    "Customers who ordered on at least 4 days in the last 24 months, with their own ordering rhythm and whether they are overdue. Two as-of dates: current and a 12-month backtest.",
+    CADENCE_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_MART_CHANNEL_MONTH,
+    "Orders, customers, cylinders and revenue by month and channel, with zeros included. Channel labels changed in Nov 2020; see ref_channel_events.",
+    CHANNEL_MONTH_COMMENTS, MART_TAGS,
+)
+apply_governance(
+    T_REF_CHANNEL_EVENTS,
+    "Events worth marking on the channel chart. Status says whether an event is observed in the data or is a hypothesis to confirm.",
+    CHANNEL_EVENTS_COMMENTS, REF_TAGS,
+)
+apply_governance(
+    T_METRIC_CATALOG,
+    "Data dictionary for numbers: every metric used by the report, its definition, where it lives and what to watch for.",
+    METRIC_CATALOG_COMMENTS, REF_TAGS,
+)
 
 # COMMAND ----------
 
@@ -806,4 +765,4 @@ display(table_row_counts([
     T_MART_KPI_YTD, T_MART_PVM_SKU, T_MART_PVM_BRIDGE, T_MART_GROWTH_ANATOMY, T_MART_CUSTOMER_YEAR,
     T_MART_CUSTOMER_BRIDGE, T_MART_CUSTOMER_CADENCE, T_MART_CHANNEL_MONTH, T_REF_CHANNEL_EVENTS, T_METRIC_CATALOG,
 ]))
-print("Marts ready. Next: export the marts for the reporting tool.")
+print("Marts ready. Next: connect the reporting tool to lindedata.gold.")

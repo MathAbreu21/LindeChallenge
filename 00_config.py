@@ -1,8 +1,4 @@
 # Databricks notebook source
-# /// script
-# [tool.databricks.environment]
-# environment_version = "6"
-# ///
 # MAGIC %md
 # MAGIC # 00 · Shared configuration
 # MAGIC
@@ -13,7 +9,6 @@
 
 import datetime
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
 import pandas as pd
@@ -25,7 +20,6 @@ RAW_SCHEMA = "raw"                 # landing zone: source files exactly as deliv
 LANDING_VOLUME = "lindechallenge"  # volume inside the raw schema
 SOURCE_FILE = ""                   # leave empty to auto-detect the single .xlsx/.csv in the volume
 EXCEL_READER = "auto"              # "auto": native reader, pandas if it is not usable · "native" · "pandas"
-PARALLEL_WRITES = 4                # independent tables written at the same time in one wave (1 = one after the other)
 
 LANDING_DIR = f"/Volumes/{CATALOG}/{RAW_SCHEMA}/{LANDING_VOLUME}"
 
@@ -34,6 +28,7 @@ SCHEMAS = {
     "bronze": "Raw copy of source data in Delta. Values untouched, audit columns added. Append only.",
     "silver": "Typed, validated and flagged data. Data quality rules run here.",
     "gold": "Star schema and marts. The only layer that reporting reads.",
+    "ops": "Pipeline observability: job runs, task runs and table history, snapshotted by 05_ops_snapshot.",
 }
 
 T_BRONZE_ORDERS = f"{CATALOG}.bronze.bronze_orders"
@@ -60,6 +55,20 @@ T_MART_CHANNEL_MONTH = f"{CATALOG}.gold.mart_channel_month"
 T_REF_CHANNEL_EVENTS = f"{CATALOG}.gold.ref_channel_events"
 T_METRIC_CATALOG = f"{CATALOG}.gold.metric_catalog"
 V_CADENCE_BACKTEST = f"{CATALOG}.gold.v_cadence_backtest"
+
+# Ops: what 05_ops_snapshot records about the pipeline itself (Jobs & Pipelines > Linde ETL)
+PIPELINE_JOB_ID = 231937700218123
+T_OPS_JOB_RUNS = f"{CATALOG}.ops.job_runs"
+T_OPS_TASK_RUNS = f"{CATALOG}.ops.job_task_runs"
+T_OPS_TABLE_HISTORY = f"{CATALOG}.ops.table_history"
+T_OPS_TABLE_INVENTORY = f"{CATALOG}.ops.table_inventory"
+# Every table the pipeline writes (views have no Delta history, so they are not listed).
+TRACKED_TABLES = [
+    T_BRONZE_ORDERS, T_SILVER_ORDERS, T_SILVER_QUARANTINE, T_DQ_RESULTS,
+    T_DIM_DATE, T_DIM_PRODUCT, T_DIM_CUSTOMER, T_DIM_CHANNEL, T_FCT_ORDER_LINE,
+    T_MART_KPI_YTD, T_MART_PVM_SKU, T_MART_PVM_BRIDGE, T_MART_GROWTH_ANATOMY, T_MART_CUSTOMER_YEAR,
+    T_MART_CUSTOMER_BRIDGE, T_MART_CUSTOMER_CADENCE, T_MART_CHANNEL_MONTH, T_REF_CHANNEL_EVENTS, T_METRIC_CATALOG,
+]
 
 RUN_ID = uuid.uuid4().hex[:12]
 
@@ -139,82 +148,29 @@ def current_tags(table):
     return {r["tag_name"]: r["tag_value"] for r in rows}
 
 
-def catalog_governance(tables):
-    """Table comment, column comments and tags of several tables, with one information_schema query per schema.
-    Returns {table: {"comment": str, "columns": {column: comment}, "tags": {key: value}}}. A table the catalog does
-    not list is absent, and the caller falls back to DESCRIBE for it."""
-    by_schema = {}
-    for table in tables:
-        catalog, schema, name = table.split(".")
-        by_schema.setdefault((catalog, schema), []).append(name)
-    state = {}
-    for (catalog, schema), names in by_schema.items():
-        name_list = ", ".join(f"'{sql_str(n)}'" for n in names)
-        rows = spark.sql(f"""
-            SELECT table_name, 'table' AS kind, CAST(NULL AS STRING) AS name, comment AS value
-            FROM {catalog}.information_schema.tables
-            WHERE table_schema = '{sql_str(schema)}' AND table_name IN ({name_list})
-            UNION ALL
-            SELECT table_name, 'column' AS kind, column_name AS name, comment AS value
-            FROM {catalog}.information_schema.columns
-            WHERE table_schema = '{sql_str(schema)}' AND table_name IN ({name_list})
-            UNION ALL
-            SELECT table_name, 'tag' AS kind, tag_name AS name, tag_value AS value
-            FROM {catalog}.information_schema.table_tags
-            WHERE schema_name = '{sql_str(schema)}' AND table_name IN ({name_list})
-        """).collect()
-        for r in rows:
-            entry = state.setdefault(f"{catalog}.{schema}.{r['table_name']}", {"comment": "", "columns": {}, "tags": {}})
-            if r["kind"] == "table":
-                entry["comment"] = r["value"] or ""
-            elif r["kind"] == "column":
-                entry["columns"][r["name"]] = r["value"] or ""
-            else:
-                entry["tags"][r["name"]] = r["value"] or ""
-    return state
-
-
-def apply_governance_batch(specs):
-    """Table comments, column comments and tags for several tables: one catalog read for all of them, then DDL only
-    for what differs. Tables written through with_comments() normally need nothing, so a notebook with ten gold tables
-    costs one query here instead of twenty reads (and instead of one ALTER TABLE per column before that).
-    specs: list of (table, table_comment, column_comments, tags). Tags are best effort on Free Edition."""
-    try:
-        current = catalog_governance([spec[0] for spec in specs])
-    except Exception as exc:
-        print(f"information_schema not usable ({str(exc)[:120]}); reading one table at a time.")
-        current = {}
-    for table, table_comment, column_comments, tags in specs:
-        state = current.get(table)
-        if state is not None:
-            cur_comment, cur_columns, cur_tags = state["comment"], state["columns"], state["tags"]
-        else:
-            cur_comment, cur_columns = describe_governance(table)
-            try:
-                cur_tags = current_tags(table)
-            except Exception:
-                cur_tags = None  # unknown: set them below
-        changed = []
-        if cur_comment != table_comment:
-            spark.sql(f"COMMENT ON TABLE {table} IS '{sql_str(table_comment)}'")
-            changed.append("table comment")
-        for col, text in column_comments.items():
-            if col in cur_columns and cur_columns[col] != text:
-                spark.sql(f"ALTER TABLE {table} ALTER COLUMN `{col}` COMMENT '{sql_str(text)}'")
-                changed.append(col)
-        try:
-            if cur_tags is None or any(cur_tags.get(k) != v for k, v in tags.items()):
-                tag_sql = ", ".join(f"'{sql_str(k)}' = '{sql_str(v)}'" for k, v in tags.items())
-                spark.sql(f"ALTER TABLE {table} SET TAGS ({tag_sql})")
-                changed.append("tags")
-        except Exception as exc:
-            print(f"Tags not applied to {table} (to be validated on Free Edition): {str(exc)[:160]}")
-        print(f"Governance on {table}: " + (", ".join(changed) if changed else "up to date, no DDL issued"))
-
-
 def apply_governance(table, table_comment, column_comments, tags):
-    """Governance for one table. Several tables in one notebook: apply_governance_batch, one catalog read for all."""
-    apply_governance_batch([(table, table_comment, column_comments, tags)])
+    """Table comment, column comments and tags. The data dictionary is generated from these.
+
+    Only what differs from the catalog is changed. A table written through with_comments() normally needs
+    nothing: the cost is two reads, not one DDL statement per column.
+    Tags are best effort: tag support on Free Edition is still to be validated."""
+    current_comment, current_columns = describe_governance(table)
+    changed = []
+    if current_comment != table_comment:
+        spark.sql(f"COMMENT ON TABLE {table} IS '{sql_str(table_comment)}'")
+        changed.append("table comment")
+    for col, text in column_comments.items():
+        if col in current_columns and current_columns[col] != text:
+            spark.sql(f"ALTER TABLE {table} ALTER COLUMN `{col}` COMMENT '{sql_str(text)}'")
+            changed.append(col)
+    try:
+        if any(current_tags(table).get(k) != v for k, v in tags.items()):
+            tag_sql = ", ".join(f"'{sql_str(k)}' = '{sql_str(v)}'" for k, v in tags.items())
+            spark.sql(f"ALTER TABLE {table} SET TAGS ({tag_sql})")
+            changed.append("tags")
+    except Exception as exc:
+        print(f"Tags not applied to {table} (to be validated on Free Edition): {str(exc)[:160]}")
+    print(f"Governance on {table}: " + (", ".join(changed) if changed else "up to date, no DDL issued"))
 
 
 def dq_result(layer, rule_id, description, action, violations, total_rows, value=0):
@@ -248,44 +204,6 @@ def write_delta(df, table, column_comments=None):
         df = with_comments(df, column_comments)
     df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
     print(f"Wrote {table}")
-
-
-def run_parallel(tasks, workers=None):
-    """Run independent tasks (zero-argument callables) at the same time, up to PARALLEL_WRITES at once.
-    Spark Connect accepts queries from several threads and the tasks touch different tables, so a wave of writes
-    takes about as long as its slowest write instead of the sum. Waits for every task, then re-raises the first
-    error, so a failed wave never leaves a thread behind."""
-    tasks = list(tasks)
-    workers = min(workers or PARALLEL_WRITES, len(tasks))
-    if workers <= 1:
-        for task in tasks:
-            task()
-        return
-    def attached(task):
-        # Classic PySpark maps a Python thread to a JVM thread with no active SparkSession, and Delta then drops
-        # table-level metadata such as the comment on a replace. Attach the session first. Spark Connect (serverless)
-        # has no JVM side in the client, so this is a no-op there.
-        def run():
-            jvm = getattr(spark, "_jvm", None)
-            if jvm is not None:
-                jvm.SparkSession.setActiveSession(spark._jsparkSession)
-            return task()
-        return run
-
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(attached(task)) for task in tasks]
-        errors = [f.exception() for f in futures if f.exception() is not None]
-    if errors:
-        for extra in errors[1:]:
-            print(f"Also failed: {type(extra).__name__}: {str(extra)[:200]}")
-        raise errors[0]
-
-
-def write_delta_many(jobs):
-    """One wave of independent table writes. jobs: list of (DataFrame or SQL text, table, column_comments)."""
-    def task(source, table, comments):
-        return lambda: write_delta(spark.sql(source) if isinstance(source, str) else source, table, comments)
-    run_parallel([task(*job) for job in jobs])
 
 
 def table_row_counts(tables):
