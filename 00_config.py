@@ -35,7 +35,36 @@ T_SILVER_ORDERS = f"{CATALOG}.silver.silver_orders"
 T_SILVER_QUARANTINE = f"{CATALOG}.silver.silver_orders_quarantine"
 T_DQ_RESULTS = f"{CATALOG}.silver.dq_rule_results"
 
+# Gold: star schema
+T_DIM_DATE = f"{CATALOG}.gold.dim_date"
+T_DIM_PRODUCT = f"{CATALOG}.gold.dim_product"
+T_DIM_CUSTOMER = f"{CATALOG}.gold.dim_customer"
+T_DIM_CHANNEL = f"{CATALOG}.gold.dim_channel"
+T_FCT_ORDER_LINE = f"{CATALOG}.gold.fct_order_line"
+
+# Gold: marts (one per report screen) and reference tables
+T_MART_KPI_YTD = f"{CATALOG}.gold.mart_kpi_ytd"
+T_MART_PVM_SKU = f"{CATALOG}.gold.mart_pvm_sku_year"
+T_MART_PVM_BRIDGE = f"{CATALOG}.gold.mart_pvm_bridge"
+T_MART_GROWTH_ANATOMY = f"{CATALOG}.gold.mart_growth_anatomy"
+T_MART_CUSTOMER_YEAR = f"{CATALOG}.gold.mart_customer_year"
+T_MART_CUSTOMER_BRIDGE = f"{CATALOG}.gold.mart_customer_bridge"
+T_MART_CUSTOMER_CADENCE = f"{CATALOG}.gold.mart_customer_cadence"
+T_MART_CHANNEL_MONTH = f"{CATALOG}.gold.mart_channel_month"
+T_REF_CHANNEL_EVENTS = f"{CATALOG}.gold.ref_channel_events"
+T_METRIC_CATALOG = f"{CATALOG}.gold.metric_catalog"
+V_CADENCE_BACKTEST = f"{CATALOG}.gold.v_cadence_backtest"
+
 RUN_ID = uuid.uuid4().hex[:12]
+
+UNKNOWN_CHANNEL = "UNKNOWN SOURCE"  # channel label meaning "no channel captured"
+
+# One audit trail for every layer: one row per rule per run.
+RESULT_SCHEMA = (
+    "run_id string, run_ts timestamp, layer string, rule_id string, rule_description string, action string, "
+    "violations bigint, violation_value decimal(18,2), total_rows bigint, status string"
+)
+STATUS_IF_VIOLATED = {"fail": "FAIL", "quarantine": "QUARANTINED", "flag": "FLAGGED", "alert": "ALERT"}
 
 # --- Source contract -----------------------------------------------------------
 # Control totals taken from the source file with an independent tool (pandas),
@@ -117,7 +146,7 @@ def apply_governance(table, table_comment, column_comments, tags):
         changed.append("table comment")
     for col, text in column_comments.items():
         if col in current_columns and current_columns[col] != text:
-            spark.sql(f"ALTER TABLE {table} ALTER COLUMN {col} COMMENT '{sql_str(text)}'")
+            spark.sql(f"ALTER TABLE {table} ALTER COLUMN `{col}` COMMENT '{sql_str(text)}'")
             changed.append(col)
     try:
         if any(current_tags(table).get(k) != v for k, v in tags.items()):
@@ -127,6 +156,45 @@ def apply_governance(table, table_comment, column_comments, tags):
     except Exception as exc:
         print(f"Tags not applied to {table} (to be validated on Free Edition): {str(exc)[:160]}")
     print(f"Governance on {table}: " + (", ".join(changed) if changed else "up to date, no DDL issued"))
+
+
+def dq_result(layer, rule_id, description, action, violations, total_rows, value=0):
+    """One row for the data quality audit table."""
+    value = Decimal(str(value or 0)).quantize(Decimal("0.01"))
+    status = STATUS_IF_VIOLATED[action] if violations > 0 else "PASS"
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    return (RUN_ID, now, layer, rule_id, description, action, int(violations), value, int(total_rows), status)
+
+
+def log_and_enforce(rows):
+    """Append rule results to the audit table in one commit, then stop the run if any fail-level rule was violated.
+    The audit table is created (with its column comments) by 02_silver."""
+    df = spark.createDataFrame(rows, RESULT_SCHEMA)
+    df.write.format("delta").mode("append").saveAsTable(T_DQ_RESULTS)
+    display(df.select("rule_id", "action", "violations", "total_rows", "status"))
+    failed = [r for r in rows if r[9] == "FAIL"]
+    if failed:
+        raise RuntimeError("Fail-level rules triggered, nothing was published: "
+                           + ", ".join(f"{r[3]} ({r[6]:,})" for r in failed))
+    print("All fail-level rules passed.")
+
+
+def write_delta(df, table, column_comments=None):
+    """Rebuild a derived table from a DataFrame (silver and gold are derived, so they are rewritten whole).
+    Column comments travel with the schema (see with_comments); columns without a comment are reported."""
+    if column_comments is not None:
+        missing = [c for c in df.columns if c not in column_comments]
+        if missing:
+            print(f"  columns without a comment in {table}: {', '.join(missing)}")
+        df = with_comments(df, column_comments)
+    df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
+    print(f"Wrote {table}")
+
+
+def table_row_counts(tables):
+    """Row count of several tables in one query (one job instead of one per table)."""
+    sql = " UNION ALL ".join(f"SELECT '{t.split('.')[-1]}' AS table_name, COUNT(*) AS `rows` FROM {t}" for t in tables)
+    return pd.DataFrame([r.asDict() for r in spark.sql(sql).collect()])
 
 
 def resolve_source_file():

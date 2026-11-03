@@ -42,7 +42,6 @@ VALID_TO = "2022-11-21"
 
 EXPECTED_UNIT = "CYLINDERS"
 EXPECTED_CURRENCY = "EUR"
-UNKNOWN_CHANNEL = "UNKNOWN SOURCE"
 DEFAULT_SEGMENT = "Default value for new customers"
 
 # COMMAND ----------
@@ -145,7 +144,6 @@ duplicate_rows = bronze_rows - int(agg["distinct_keys"] or 0)  # rows that share
 max_date = agg["max_clean_date"]
 print(f"Bronze: {bronze_rows:,} rows, value {bronze_value:,}")
 
-STATUS_IF_VIOLATED = {"fail": "FAIL", "quarantine": "QUARANTINED", "flag": "FLAGGED", "alert": "ALERT"}
 now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 results = [(
     RUN_ID, now, "silver", "R01_unique_order_line",
@@ -162,10 +160,6 @@ for r in ROW_RULES:
         STATUS_IF_VIOLATED[r["action"]] if n > 0 else "PASS",
     ))
 
-RESULT_SCHEMA = (
-    "run_id string, run_ts timestamp, layer string, rule_id string, rule_description string, action string, "
-    "violations bigint, violation_value decimal(18,2), total_rows bigint, status string"
-)
 DQ_TABLE_COMMENT = (
     "One row per data quality rule per run: what was checked, the action on violation, "
     "how many rows and how much value were affected."
