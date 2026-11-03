@@ -1,14 +1,4290 @@
 {
+  "datasets": [
+    {
+      "name": "latest_run",
+      "displayName": "latest_run",
+      "queryLines": [
+        "WITH r AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER (ORDER BY start_ms DESC) AS rn\n",
+        "  FROM `lindedata`.`ops`.`job_runs`\n",
+        "),\n",
+        "w AS (\n",
+        "  SELECT job_run_id, SUM(rows_written) AS rows_written, COUNT(*) AS commits\n",
+        "  FROM `lindedata`.`ops`.`table_history`\n",
+        "  WHERE job_run_id IS NOT NULL\n",
+        "  GROUP BY job_run_id\n",
+        ")\n",
+        "SELECT\n",
+        "  c.run_id,\n",
+        "  c.start_ts,\n",
+        "  c.end_ts,\n",
+        "  c.result_state,\n",
+        "  c.life_cycle_state,\n",
+        "  c.task_count,\n",
+        "  c.run_page_url,\n",
+        "  c.trigger,\n",
+        "  c.creator_user_name,\n",
+        "  c.state_message,\n",
+        "  ROUND(c.duration_s / 60.0, 1) AS duration_min,\n",
+        "  ROUND(p.duration_s / 60.0, 1) AS prev_duration_min,\n",
+        "  w.rows_written,\n",
+        "  w.commits\n",
+        "FROM r c\n",
+        "  LEFT JOIN r p ON p.rn = 2\n",
+        "  LEFT JOIN w ON w.job_run_id = c.run_id\n",
+        "WHERE c.rn = 1"
+      ]
+    },
+    {
+      "name": "run_stats",
+      "displayName": "run_stats",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(*) AS runs,\n",
+        "  SUM(CASE WHEN result_state = 'SUCCESS' THEN 1 ELSE 0 END) AS successful_runs,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN result_state = 'SUCCESS' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS success_pct,\n",
+        "  ROUND(AVG(duration_s) / 60.0, 1) AS avg_duration_min,\n",
+        "  MIN(start_ts) AS first_run_ts,\n",
+        "  MAX(start_ts) AS last_run_ts\n",
+        "FROM `lindedata`.`ops`.`job_runs`\n",
+        "WHERE end_ms > 0"
+      ]
+    },
+    {
+      "name": "runs",
+      "displayName": "runs",
+      "queryLines": [
+        "SELECT\n",
+        "  run_id,\n",
+        "  date_format(start_ts, 'yyyy-MM-dd HH:mm') AS run_label,\n",
+        "  start_ts,\n",
+        "  end_ts,\n",
+        "  ROUND(duration_s / 60.0, 1) AS duration_min,\n",
+        "  COALESCE(result_state, life_cycle_state) AS result_state,\n",
+        "  trigger,\n",
+        "  task_count,\n",
+        "  run_page_url,\n",
+        "  creator_user_name,\n",
+        "  state_message\n",
+        "FROM `lindedata`.`ops`.`job_runs`\n",
+        "ORDER BY start_ts"
+      ]
+    },
+    {
+      "name": "task_runs",
+      "displayName": "task_runs",
+      "queryLines": [
+        "SELECT\n",
+        "  t.run_id,\n",
+        "  date_format(r.start_ts, 'yyyy-MM-dd HH:mm') AS run_label,\n",
+        "  r.start_ts AS run_start_ts,\n",
+        "  t.task_key,\n",
+        "  t.notebook_path,\n",
+        "  t.start_ts,\n",
+        "  t.end_ts,\n",
+        "  ROUND(t.duration_s / 60.0, 2) AS duration_min,\n",
+        "  COALESCE(t.result_state, t.life_cycle_state) AS result_state,\n",
+        "  t.attempt_number,\n",
+        "  t.state_message\n",
+        "FROM `lindedata`.`ops`.`job_task_runs` t\n",
+        "  JOIN `lindedata`.`ops`.`job_runs` r ON r.run_id = t.run_id\n",
+        "ORDER BY r.start_ts, t.start_ts"
+      ]
+    },
+    {
+      "name": "rows_by_run",
+      "displayName": "rows_by_run",
+      "queryLines": [
+        "SELECT\n",
+        "  r.run_id,\n",
+        "  date_format(r.start_ts, 'yyyy-MM-dd HH:mm') AS run_label,\n",
+        "  r.start_ts,\n",
+        "  COALESCE(r.result_state, r.life_cycle_state) AS result_state,\n",
+        "  SUM(h.rows_written) AS rows_written,\n",
+        "  COUNT(h.version) AS commits,\n",
+        "  COUNT(DISTINCT h.table_name) AS tables_written\n",
+        "FROM `lindedata`.`ops`.`job_runs` r\n",
+        "  LEFT JOIN `lindedata`.`ops`.`table_history` h ON h.job_run_id = r.run_id\n",
+        "GROUP BY r.run_id, r.start_ts, r.result_state, r.life_cycle_state\n",
+        "ORDER BY r.start_ts"
+      ]
+    },
+    {
+      "name": "commits_latest_run",
+      "displayName": "commits_latest_run",
+      "queryLines": [
+        "WITH latest AS (\n",
+        "  SELECT run_id FROM `lindedata`.`ops`.`job_runs` ORDER BY start_ms DESC LIMIT 1\n",
+        ")\n",
+        "SELECT\n",
+        "  h.commit_ts,\n",
+        "  h.task_key,\n",
+        "  h.layer,\n",
+        "  h.table_name,\n",
+        "  h.operation,\n",
+        "  h.version,\n",
+        "  h.rows_written,\n",
+        "  h.files_written,\n",
+        "  ROUND(h.bytes_written / 1048576.0, 2) AS mb_written\n",
+        "FROM `lindedata`.`ops`.`table_history` h\n",
+        "  JOIN latest l ON h.job_run_id = l.run_id\n",
+        "ORDER BY h.commit_ts"
+      ]
+    },
+    {
+      "name": "history_summary",
+      "displayName": "history_summary",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(*) AS commits,\n",
+        "  SUM(CASE WHEN job_run_id IS NULL THEN 1 ELSE 0 END) AS unattributed_commits,\n",
+        "  COUNT(DISTINCT table_name) AS tables,\n",
+        "  MAX(commit_ts) AS last_commit_ts\n",
+        "FROM `lindedata`.`ops`.`table_history`"
+      ]
+    },
+    {
+      "name": "dq_latest",
+      "displayName": "dq_latest",
+      "queryLines": [
+        "WITH \n",
+        "ranked AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY rule_id ORDER BY run_ts DESC) AS rn\n",
+        "  FROM `lindedata`.`silver`.`dq_rule_results`\n",
+        ")\n",
+        "SELECT\n",
+        "  layer,\n",
+        "  rule_id,\n",
+        "  rule_description,\n",
+        "  action,\n",
+        "  status,\n",
+        "  violations,\n",
+        "  violation_value,\n",
+        "  total_rows,\n",
+        "  ROUND(100.0 * violations / NULLIF(total_rows, 0), 2) AS violation_pct,\n",
+        "  run_ts,\n",
+        "  run_id\n",
+        "FROM ranked\n",
+        "WHERE rn = 1\n",
+        "ORDER BY CASE layer WHEN 'silver' THEN 1 ELSE 2 END, rule_id"
+      ]
+    },
+    {
+      "name": "dq_summary",
+      "displayName": "dq_summary",
+      "queryLines": [
+        "WITH \n",
+        "ranked AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY rule_id ORDER BY run_ts DESC) AS rn\n",
+        "  FROM `lindedata`.`silver`.`dq_rule_results`\n",
+        ")\n",
+        "SELECT\n",
+        "  COUNT(*) AS rules,\n",
+        "  SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS passed,\n",
+        "  SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END) AS failed,\n",
+        "  SUM(CASE WHEN status = 'QUARANTINED' THEN 1 ELSE 0 END) AS quarantined_rules,\n",
+        "  SUM(CASE WHEN status IN ('FLAGGED', 'ALERT') THEN 1 ELSE 0 END) AS flagged_rules,\n",
+        "  SUM(CASE WHEN action = 'quarantine' THEN violations ELSE 0 END) AS quarantined_lines,\n",
+        "  SUM(CASE WHEN action IN ('flag', 'alert') THEN violations ELSE 0 END) AS flagged_lines,\n",
+        "  MAX(CASE WHEN layer = 'silver' THEN run_ts END) AS silver_run_ts,\n",
+        "  MAX(CASE WHEN layer = 'gold' THEN run_ts END) AS gold_run_ts\n",
+        "FROM ranked\n",
+        "WHERE rn = 1"
+      ]
+    },
+    {
+      "name": "dq_history_info",
+      "displayName": "dq_history_info",
+      "queryLines": [
+        "SELECT\n",
+        "  run_ts,\n",
+        "  run_id,\n",
+        "  layer,\n",
+        "  rule_id,\n",
+        "  action,\n",
+        "  status,\n",
+        "  violations,\n",
+        "  violation_value,\n",
+        "  total_rows,\n",
+        "  ROUND(100.0 * violations / NULLIF(total_rows, 0), 3) AS violation_pct\n",
+        "FROM `lindedata`.`silver`.`dq_rule_results`\n",
+        "WHERE action IN ('quarantine', 'flag', 'alert')\n",
+        "ORDER BY run_ts, rule_id"
+      ]
+    },
+    {
+      "name": "dq_runs",
+      "displayName": "dq_runs",
+      "queryLines": [
+        "SELECT\n",
+        "  run_id,\n",
+        "  layer,\n",
+        "  MIN(run_ts) AS run_ts,\n",
+        "  COUNT(*) AS rules,\n",
+        "  SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS passed,\n",
+        "  SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END) AS failed,\n",
+        "  SUM(CASE WHEN status = 'QUARANTINED' THEN 1 ELSE 0 END) AS quarantined,\n",
+        "  SUM(CASE WHEN status IN ('FLAGGED', 'ALERT') THEN 1 ELSE 0 END) AS flagged_or_alerted,\n",
+        "  SUM(violations) AS violations\n",
+        "FROM `lindedata`.`silver`.`dq_rule_results`\n",
+        "GROUP BY run_id, layer\n",
+        "ORDER BY run_ts DESC"
+      ]
+    },
+    {
+      "name": "layer_counts",
+      "displayName": "layer_counts",
+      "queryLines": [
+        "SELECT 1 AS sort_order, 'bronze' AS layer, 'bronze_orders' AS table_name, COUNT(*) AS row_count,\n",
+        "       ROUND(SUM(CAST(ORDER_VALUE AS DECIMAL(18, 2))), 2) AS order_value, SUM(QUANTITY) AS cylinders\n",
+        "FROM `lindedata`.`bronze`.`bronze_orders`\n",
+        "UNION ALL\n",
+        "SELECT 2, 'silver', 'silver_orders', COUNT(*), ROUND(SUM(order_value), 2), SUM(quantity)\n",
+        "FROM `lindedata`.`silver`.`silver_orders`\n",
+        "UNION ALL\n",
+        "SELECT 3, 'silver', 'silver_orders_quarantine', COUNT(*), ROUND(SUM(order_value), 2), SUM(quantity)\n",
+        "FROM `lindedata`.`silver`.`silver_orders_quarantine`\n",
+        "UNION ALL\n",
+        "SELECT 4, 'gold', 'fct_order_line', COUNT(*), ROUND(SUM(order_value), 2), SUM(quantity)\n",
+        "FROM `lindedata`.`gold`.`fct_order_line`\n",
+        "ORDER BY sort_order"
+      ]
+    },
+    {
+      "name": "reconciliation",
+      "displayName": "reconciliation",
+      "queryLines": [
+        "WITH b AS (SELECT COUNT(*) AS n, SUM(CAST(ORDER_VALUE AS DECIMAL(18, 2))) AS v FROM `lindedata`.`bronze`.`bronze_orders`),\n",
+        "     s AS (SELECT COUNT(*) AS n, SUM(order_value) AS v FROM `lindedata`.`silver`.`silver_orders`),\n",
+        "     q AS (SELECT COUNT(*) AS n, SUM(order_value) AS v FROM `lindedata`.`silver`.`silver_orders_quarantine`),\n",
+        "     g AS (SELECT COUNT(*) AS n, SUM(order_value) AS v FROM `lindedata`.`gold`.`fct_order_line`)\n",
+        "SELECT\n",
+        "  b.n AS bronze_rows,\n",
+        "  s.n AS silver_rows,\n",
+        "  q.n AS quarantine_rows,\n",
+        "  g.n AS gold_rows,\n",
+        "  s.n + q.n - b.n AS rows_gap,\n",
+        "  ROUND(COALESCE(s.v, 0) + COALESCE(q.v, 0) - COALESCE(b.v, 0), 2) AS value_gap,\n",
+        "  g.n - s.n AS gold_rows_gap,\n",
+        "  ROUND(COALESCE(g.v, 0) - COALESCE(s.v, 0), 2) AS gold_value_gap,\n",
+        "  ROUND(100.0 * q.n / NULLIF(b.n, 0), 2) AS quarantine_pct\n",
+        "FROM b CROSS JOIN s CROSS JOIN q CROSS JOIN g"
+      ]
+    },
+    {
+      "name": "quarantine_reasons",
+      "displayName": "quarantine_reasons",
+      "queryLines": [
+        "SELECT\n",
+        "  _quarantine_reason AS reason,\n",
+        "  COUNT(*) AS row_count,\n",
+        "  ROUND(SUM(order_value), 2) AS order_value,\n",
+        "  MIN(order_date) AS first_order_date,\n",
+        "  MAX(order_date) AS last_order_date,\n",
+        "  MIN(_order_date_raw) AS min_raw_date,\n",
+        "  MAX(_order_date_raw) AS max_raw_date\n",
+        "FROM `lindedata`.`silver`.`silver_orders_quarantine`\n",
+        "GROUP BY _quarantine_reason\n",
+        "ORDER BY row_count DESC"
+      ]
+    },
+    {
+      "name": "freshness",
+      "displayName": "freshness",
+      "queryLines": [
+        "SELECT 1 AS sort_order, 'bronze' AS layer, 'bronze_orders' AS table_name, 'Last load' AS activity,\n",
+        "       MAX(_loaded_at) AS last_activity_ts,\n",
+        "       to_date(CAST(MAX(ORDER_CREATION_DATE) AS STRING), 'yyyyMMdd') AS latest_order_date\n",
+        "FROM `lindedata`.`bronze`.`bronze_orders`\n",
+        "UNION ALL\n",
+        "SELECT 2, 'silver', 'silver_orders', 'Last rebuild', MAX(_silver_loaded_at), MAX(order_date)\n",
+        "FROM `lindedata`.`silver`.`silver_orders`\n",
+        "UNION ALL\n",
+        "SELECT 3, 'gold', 'fct_order_line', 'Last rule run',\n",
+        "       (SELECT MAX(run_ts) FROM `lindedata`.`silver`.`dq_rule_results` WHERE layer = 'gold'),\n",
+        "       to_date(CAST(MAX(date_key) AS STRING), 'yyyyMMdd')\n",
+        "FROM `lindedata`.`gold`.`fct_order_line`\n",
+        "ORDER BY sort_order"
+      ]
+    },
+    {
+      "name": "flags_by_year",
+      "displayName": "flags_by_year",
+      "queryLines": [
+        "SELECT\n",
+        "  year(order_date) AS year,\n",
+        "  CAST(year(order_date) AS STRING) AS year_label,\n",
+        "  COUNT(*) AS lines,\n",
+        "  SUM(CASE WHEN is_zero_value THEN 1 ELSE 0 END) AS zero_value_lines,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN is_zero_value THEN 1 ELSE 0 END) / COUNT(*), 2) AS zero_value_pct,\n",
+        "  SUM(CASE WHEN is_negative_value THEN 1 ELSE 0 END) AS negative_value_lines,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN is_negative_value THEN 1 ELSE 0 END) / COUNT(*), 2) AS negative_value_pct,\n",
+        "  SUM(CASE WHEN order_channel = 'UNKNOWN SOURCE' THEN 1 ELSE 0 END) AS unknown_channel_lines,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN order_channel = 'UNKNOWN SOURCE' THEN 1 ELSE 0 END) / COUNT(*), 2) AS unknown_channel_pct,\n",
+        "  SUM(CASE WHEN customer_segment = 'Default value for new customers' OR customer_segment IS NULL THEN 1 ELSE 0 END) AS placeholder_segment_lines,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN customer_segment = 'Default value for new customers' OR customer_segment IS NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS placeholder_segment_pct,\n",
+        "  SUM(CASE WHEN is_order_series_3 THEN 1 ELSE 0 END) AS legacy_series_lines,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN is_order_series_3 THEN 1 ELSE 0 END) / COUNT(*), 2) AS legacy_series_pct\n",
+        "FROM `lindedata`.`silver`.`silver_orders`\n",
+        "GROUP BY year(order_date)\n",
+        "ORDER BY year"
+      ]
+    },
+    {
+      "name": "flags_by_year_long",
+      "displayName": "flags_by_year_long",
+      "queryLines": [
+        "WITH wide AS (\n",
+        "  SELECT\n",
+        "    year(order_date) AS year,\n",
+        "    ROUND(100.0 * SUM(CASE WHEN is_zero_value THEN 1 ELSE 0 END) / COUNT(*), 2) AS zero_value_pct,\n",
+        "    ROUND(100.0 * SUM(CASE WHEN is_negative_value THEN 1 ELSE 0 END) / COUNT(*), 2) AS negative_value_pct,\n",
+        "    ROUND(100.0 * SUM(CASE WHEN order_channel = 'UNKNOWN SOURCE' THEN 1 ELSE 0 END) / COUNT(*), 2) AS unknown_channel_pct,\n",
+        "    ROUND(100.0 * SUM(CASE WHEN customer_segment = 'Default value for new customers' OR customer_segment IS NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS placeholder_segment_pct,\n",
+        "    ROUND(100.0 * SUM(CASE WHEN is_order_series_3 THEN 1 ELSE 0 END) / COUNT(*), 2) AS legacy_series_pct\n",
+        "  FROM `lindedata`.`silver`.`silver_orders`\n",
+        "  GROUP BY year(order_date)\n",
+        ")\n",
+        "SELECT\n",
+        "  CAST(year AS STRING) AS year_label,\n",
+        "  year,\n",
+        "  metric,\n",
+        "  pct\n",
+        "FROM (\n",
+        "  SELECT\n",
+        "    year,\n",
+        "    stack(\n",
+        "      5,\n",
+        "      'Zero value (R04)', zero_value_pct,\n",
+        "      'Negative value (R04)', negative_value_pct,\n",
+        "      'Unknown channel (R06)', unknown_channel_pct,\n",
+        "      'Placeholder segment (R07)', placeholder_segment_pct,\n",
+        "      'Legacy order series', legacy_series_pct\n",
+        "    ) AS (metric, pct)\n",
+        "  FROM wide\n",
+        ")\n",
+        "ORDER BY year, metric"
+      ]
+    },
+    {
+      "name": "inventory",
+      "displayName": "inventory",
+      "queryLines": [
+        "SELECT\n",
+        "  layer,\n",
+        "  table_name,\n",
+        "  role,\n",
+        "  row_count,\n",
+        "  num_files,\n",
+        "  ROUND(size_bytes / 1048576.0, 2) AS size_mb,\n",
+        "  created_at,\n",
+        "  last_modified,\n",
+        "  snapshot_ts,\n",
+        "  CASE layer WHEN 'bronze' THEN 1 WHEN 'silver' THEN 2 WHEN 'gold' THEN 3 ELSE 4 END AS layer_order\n",
+        "FROM `lindedata`.`ops`.`table_inventory`\n",
+        "ORDER BY layer_order, table_name"
+      ]
+    },
+    {
+      "name": "inventory_summary",
+      "displayName": "inventory_summary",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(*) AS tables,\n",
+        "  SUM(row_count) AS total_rows,\n",
+        "  ROUND(SUM(size_bytes) / 1048576.0, 1) AS total_size_mb,\n",
+        "  SUM(num_files) AS total_files,\n",
+        "  MAX(last_modified) AS last_modified,\n",
+        "  MAX(snapshot_ts) AS snapshot_ts\n",
+        "FROM `lindedata`.`ops`.`table_inventory`"
+      ]
+    },
+    {
+      "name": "comment_coverage",
+      "displayName": "comment_coverage",
+      "queryLines": [
+        "WITH t AS (\n",
+        "  SELECT table_schema, table_name, comment AS table_comment\n",
+        "  FROM `lindedata`.`information_schema`.`tables`\n",
+        "  WHERE table_schema IN ('bronze', 'silver', 'gold', 'ops')\n",
+        "),\n",
+        "c AS (\n",
+        "  SELECT table_schema, table_name, COUNT(*) AS columns,\n",
+        "         SUM(CASE WHEN comment IS NOT NULL AND comment <> '' THEN 1 ELSE 0 END) AS commented_columns\n",
+        "  FROM `lindedata`.`information_schema`.`columns`\n",
+        "  WHERE table_schema IN ('bronze', 'silver', 'gold', 'ops')\n",
+        "  GROUP BY table_schema, table_name\n",
+        ")\n",
+        "SELECT\n",
+        "  t.table_schema AS layer,\n",
+        "  t.table_name,\n",
+        "  CASE WHEN t.table_comment IS NOT NULL AND t.table_comment <> '' THEN 'Yes' ELSE 'No' END AS table_comment,\n",
+        "  c.columns,\n",
+        "  c.commented_columns,\n",
+        "  c.columns - c.commented_columns AS missing_comments,\n",
+        "  ROUND(100.0 * c.commented_columns / NULLIF(c.columns, 0), 1) AS column_comment_pct,\n",
+        "  CASE t.table_schema WHEN 'bronze' THEN 1 WHEN 'silver' THEN 2 WHEN 'gold' THEN 3 ELSE 4 END AS layer_order\n",
+        "FROM t\n",
+        "  JOIN c ON c.table_schema = t.table_schema AND c.table_name = t.table_name\n",
+        "ORDER BY layer_order, t.table_name"
+      ]
+    },
+    {
+      "name": "governance_summary",
+      "displayName": "governance_summary",
+      "queryLines": [
+        "WITH t AS (\n",
+        "  SELECT table_schema, table_name, comment AS table_comment\n",
+        "  FROM `lindedata`.`information_schema`.`tables`\n",
+        "  WHERE table_schema IN ('bronze', 'silver', 'gold', 'ops')\n",
+        "),\n",
+        "c AS (\n",
+        "  SELECT table_schema, table_name, COUNT(*) AS columns,\n",
+        "         SUM(CASE WHEN comment IS NOT NULL AND comment <> '' THEN 1 ELSE 0 END) AS commented_columns\n",
+        "  FROM `lindedata`.`information_schema`.`columns`\n",
+        "  WHERE table_schema IN ('bronze', 'silver', 'gold', 'ops')\n",
+        "  GROUP BY table_schema, table_name\n",
+        ")\n",
+        "SELECT\n",
+        "  COUNT(*) AS tables,\n",
+        "  SUM(CASE WHEN t.table_comment IS NOT NULL AND t.table_comment <> '' THEN 1 ELSE 0 END) AS tables_with_comment,\n",
+        "  SUM(c.columns) AS columns,\n",
+        "  SUM(c.commented_columns) AS commented_columns,\n",
+        "  ROUND(100.0 * SUM(c.commented_columns) / NULLIF(SUM(c.columns), 0), 1) AS column_comment_pct,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN t.table_comment IS NOT NULL AND t.table_comment <> '' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS table_comment_pct\n",
+        "FROM t\n",
+        "  JOIN c ON c.table_schema = t.table_schema AND c.table_name = t.table_name"
+      ]
+    }
+  ],
   "pages": [
     {
-      "name": "1584f444",
-      "displayName": "Untitled page",
-      "pageType": "PAGE_TYPE_CANVAS"
+      "name": "overview",
+      "displayName": "1 - Pipeline health",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "intro_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Is the pipeline healthy?\n\nThe latest run of the Linde ETL job, the data quality rules it logged, and whether every layer still adds up. Rules, reconciliation, flags, runs and tables each have their own page."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_last_duration",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "latest_run",
+                  "fields": [
+                    {
+                      "name": "sum(duration_min)",
+                      "expression": "SUM(`duration_min`)"
+                    },
+                    {
+                      "name": "sum(prev_duration_min)",
+                      "expression": "SUM(`prev_duration_min`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Last run duration (min)",
+                "showDescription": true,
+                "description": "Latest run of the job. Arrow compares with the run before."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(duration_min)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  },
+                  "displayName": "Latest run"
+                },
+                "target": {
+                  "fieldName": "sum(prev_duration_min)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "Run before"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_rules_failed",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_summary",
+                  "fields": [
+                    {
+                      "name": "sum(failed)",
+                      "expression": "SUM(`failed`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Rules failed, latest results",
+                "showDescription": true,
+                "description": "Fail-level rules stop the run before anything is published. Anything above zero needs a look."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(failed)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": ">",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_quarantine",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reconciliation",
+                  "fields": [
+                    {
+                      "name": "sum(quarantine_rows)",
+                      "expression": "SUM(`quarantine_rows`)"
+                    },
+                    {
+                      "name": "quarantine_pct",
+                      "expression": "`quarantine_pct`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Lines in quarantine",
+                "showDescription": true,
+                "description": "Rows held back by a quarantine rule and kept in silver_orders_quarantine. Nothing is deleted."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(quarantine_rows)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  },
+                  "formatTemplate": "{{ @formatted }} ({{ quarantine_pct }}% of bronze)"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_success_rate",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "run_stats",
+                  "fields": [
+                    {
+                      "name": "sum(success_pct)",
+                      "expression": "SUM(`success_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Success rate of recorded runs",
+                "showDescription": true,
+                "description": "Finished runs kept by 05_ops_snapshot."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(success_pct)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "rule_status_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_latest",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "rule_id",
+                      "expression": "`rule_id`"
+                    },
+                    {
+                      "name": "action",
+                      "expression": "`action`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "violations",
+                      "expression": "`violations`"
+                    },
+                    {
+                      "name": "violation_pct",
+                      "expression": "`violation_pct`"
+                    },
+                    {
+                      "name": "total_rows",
+                      "expression": "`total_rows`"
+                    },
+                    {
+                      "name": "run_ts",
+                      "expression": "`run_ts`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Latest result per rule",
+                "showDescription": true,
+                "description": "Silver rules from 02_silver, gold rules from 03_gold_star and 04_gold_marts. A rule keeps its last logged result until the next run."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Layer"
+                  },
+                  {
+                    "fieldName": "rule_id",
+                    "displayName": "Rule"
+                  },
+                  {
+                    "fieldName": "action",
+                    "displayName": "Action"
+                  },
+                  {
+                    "fieldName": "status",
+                    "displayName": "Status",
+                    "style": {
+                      "type": "basic",
+                      "rules": [
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "PASS"
+                            },
+                            "fieldName": "status"
+                          },
+                          "foregroundColor": "#006300"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "ALERT"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#FAB219",
+                          "foregroundColor": "#0B0B0B"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "FLAGGED"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#FAB219",
+                          "foregroundColor": "#0B0B0B"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "QUARANTINED"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#EC835A",
+                          "foregroundColor": "#FFFFFF"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "FAIL"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#D03B3B",
+                          "foregroundColor": "#FFFFFF"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "fieldName": "violations",
+                    "displayName": "Lines in violation",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "violation_pct",
+                    "displayName": "Share (%)",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "total_rows",
+                    "displayName": "Rows checked",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "run_ts",
+                    "displayName": "Logged at",
+                    "format": {
+                      "type": "date-time",
+                      "date": "year-month-day",
+                      "time": "hour-minute"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 8,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_rows_gap",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reconciliation",
+                  "fields": [
+                    {
+                      "name": "sum(rows_gap)",
+                      "expression": "SUM(`rows_gap`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows gap, bronze vs silver + quarantine",
+                "showDescription": true,
+                "description": "Must be zero (R08)."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(rows_gap)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "condition": {
+                          "operator": ">",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 6,
+            "width": 4,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_gold_rows_gap",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reconciliation",
+                  "fields": [
+                    {
+                      "name": "sum(gold_rows_gap)",
+                      "expression": "SUM(`gold_rows_gap`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows gap, gold fact vs silver",
+                "showDescription": true,
+                "description": "Must be zero (G02)."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(gold_rows_gap)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "condition": {
+                          "operator": ">",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 10,
+            "width": 4,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "freshness_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "freshness",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "activity",
+                      "expression": "`activity`"
+                    },
+                    {
+                      "name": "last_activity_ts",
+                      "expression": "`last_activity_ts`"
+                    },
+                    {
+                      "name": "latest_order_date",
+                      "expression": "`latest_order_date`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Freshness per layer",
+                "showDescription": true,
+                "description": "Bronze and silver: when they were last loaded. Gold: when its rules last ran."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Layer"
+                  },
+                  {
+                    "fieldName": "table_name",
+                    "displayName": "Table"
+                  },
+                  {
+                    "fieldName": "activity",
+                    "displayName": "Activity"
+                  },
+                  {
+                    "fieldName": "last_activity_ts",
+                    "displayName": "When",
+                    "format": {
+                      "type": "date-time",
+                      "date": "year-month-day",
+                      "time": "hour-minute"
+                    }
+                  },
+                  {
+                    "fieldName": "latest_order_date",
+                    "displayName": "Latest order date",
+                    "format": {
+                      "type": "date",
+                      "date": "year-month-day"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 12,
+            "height": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "rules",
+      "displayName": "2 - Data quality rules",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "filter_layer",
+            "queries": [
+              {
+                "name": "dq_latest_layer",
+                "query": {
+                  "datasetName": "dq_latest",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dq_history_info_layer",
+                "query": {
+                  "datasetName": "dq_history_info",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dq_runs_layer",
+                "query": {
+                  "datasetName": "dq_runs",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "frame": {
+                "showTitle": true,
+                "title": "Layer"
+              },
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "layer",
+                    "queryName": "dq_latest_layer"
+                  },
+                  {
+                    "fieldName": "layer",
+                    "queryName": "dq_history_info_layer"
+                  },
+                  {
+                    "fieldName": "layer",
+                    "queryName": "dq_runs_layer"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "key_message",
+            "multilineTextboxSpec": {
+              "lines": [
+                "**How to read.** Every run logs one row per rule in dq_rule_results. Actions: **fail** stops the run before anything is published, **quarantine** moves the rows to silver_orders_quarantine, **flag** keeps the row with a boolean column, **alert** only reports. Silver rules (R01 to R08) run in 02_silver; gold rules (G01 to G07, M01 to M06) run in 03_gold_star and 04_gold_marts."
+              ]
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 9,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "violations_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_latest",
+                  "fields": [
+                    {
+                      "name": "rule_id",
+                      "expression": "`rule_id`"
+                    },
+                    {
+                      "name": "sum(violations)",
+                      "expression": "SUM(`violations`)"
+                    },
+                    {
+                      "name": "action",
+                      "expression": "`action`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Lines in violation by rule, latest results",
+                "showDescription": true,
+                "description": "Zero means the rule passed. Colour is the consequence of a violation."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(violations)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "axis": {
+                    "title": "Lines in violation"
+                  }
+                },
+                "y": {
+                  "fieldName": "rule_id",
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 24
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "action",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "fail",
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "value": "quarantine",
+                        "color": "#EC835A"
+                      },
+                      {
+                        "value": "flag",
+                        "color": "#FAB219"
+                      },
+                      {
+                        "value": "alert",
+                        "color": "#2A78D6"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "violations_over_runs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_history_info",
+                  "fields": [
+                    {
+                      "name": "run_ts",
+                      "expression": "`run_ts`"
+                    },
+                    {
+                      "name": "sum(violations)",
+                      "expression": "SUM(`violations`)"
+                    },
+                    {
+                      "name": "rule_id",
+                      "expression": "`rule_id`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "frame": {
+                "showTitle": true,
+                "title": "Lines per run: quarantine, flag and alert rules",
+                "showDescription": true,
+                "description": "Fail-level rules are not shown: they are zero whenever a run published."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "run_ts",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "axis": {
+                    "title": "Run"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(violations)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "axis": {
+                    "title": "Lines"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "rule_id",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 7,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "dq_runs_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_runs",
+                  "fields": [
+                    {
+                      "name": "run_ts",
+                      "expression": "`run_ts`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "rules",
+                      "expression": "`rules`"
+                    },
+                    {
+                      "name": "passed",
+                      "expression": "`passed`"
+                    },
+                    {
+                      "name": "failed",
+                      "expression": "`failed`"
+                    },
+                    {
+                      "name": "violations",
+                      "expression": "`violations`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Runs logged",
+                "showDescription": true,
+                "description": "One row per notebook run and layer."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "run_ts",
+                    "displayName": "Logged at",
+                    "format": {
+                      "type": "date-time",
+                      "date": "year-month-day",
+                      "time": "hour-minute"
+                    }
+                  },
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Layer"
+                  },
+                  {
+                    "fieldName": "rules",
+                    "displayName": "Rules",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "passed",
+                    "displayName": "Passed",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "failed",
+                    "displayName": "Failed",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    },
+                    "style": {
+                      "type": "basic",
+                      "rules": [
+                        {
+                          "condition": {
+                            "operator": ">",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "0"
+                            },
+                            "fieldName": "failed"
+                          },
+                          "backgroundColor": "#D03B3B",
+                          "foregroundColor": "#FFFFFF"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "fieldName": "violations",
+                    "displayName": "Lines in violation",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 7,
+            "y": 12,
+            "width": 5,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "rule_catalogue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_latest",
+                  "fields": [
+                    {
+                      "name": "rule_id",
+                      "expression": "`rule_id`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "action",
+                      "expression": "`action`"
+                    },
+                    {
+                      "name": "rule_description",
+                      "expression": "`rule_description`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "run_ts",
+                      "expression": "`run_ts`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Rule catalogue",
+                "showDescription": true,
+                "description": "What each rule checks, with its latest result."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "rule_id",
+                    "displayName": "Rule"
+                  },
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Layer"
+                  },
+                  {
+                    "fieldName": "action",
+                    "displayName": "Action"
+                  },
+                  {
+                    "fieldName": "rule_description",
+                    "displayName": "Checks"
+                  },
+                  {
+                    "fieldName": "status",
+                    "displayName": "Status",
+                    "style": {
+                      "type": "basic",
+                      "rules": [
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "PASS"
+                            },
+                            "fieldName": "status"
+                          },
+                          "foregroundColor": "#006300"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "ALERT"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#FAB219",
+                          "foregroundColor": "#0B0B0B"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "FLAGGED"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#FAB219",
+                          "foregroundColor": "#0B0B0B"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "QUARANTINED"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#EC835A",
+                          "foregroundColor": "#FFFFFF"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "FAIL"
+                            },
+                            "fieldName": "status"
+                          },
+                          "backgroundColor": "#D03B3B",
+                          "foregroundColor": "#FFFFFF"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "fieldName": "run_ts",
+                    "displayName": "Logged at",
+                    "format": {
+                      "type": "date-time",
+                      "date": "year-month-day",
+                      "time": "hour-minute"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconcile",
+      "displayName": "3 - Layer reconciliation",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "intro_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Does every layer add up?\n\nBronze must equal silver plus quarantine in rows and value (R08), and the gold fact must equal silver (G02, G03). Every gap below must be zero."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_rows_gap",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reconciliation",
+                  "fields": [
+                    {
+                      "name": "sum(rows_gap)",
+                      "expression": "SUM(`rows_gap`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows gap, bronze vs silver + quarantine",
+                "showDescription": true,
+                "description": "Silver plus quarantine minus bronze (R08)."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(rows_gap)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "condition": {
+                          "operator": ">",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_value_gap",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reconciliation",
+                  "fields": [
+                    {
+                      "name": "sum(value_gap)",
+                      "expression": "SUM(`value_gap`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Value gap, bronze vs silver + quarantine",
+                "showDescription": true,
+                "description": "Order value, silver plus quarantine minus bronze (R08)."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(value_gap)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "condition": {
+                          "operator": ">",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_gold_rows_gap",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reconciliation",
+                  "fields": [
+                    {
+                      "name": "sum(gold_rows_gap)",
+                      "expression": "SUM(`gold_rows_gap`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows gap, gold fact vs silver",
+                "showDescription": true,
+                "description": "Fact rows minus silver rows (G02)."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(gold_rows_gap)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "condition": {
+                          "operator": ">",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_gold_value_gap",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reconciliation",
+                  "fields": [
+                    {
+                      "name": "sum(gold_value_gap)",
+                      "expression": "SUM(`gold_value_gap`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Value gap, gold fact vs silver",
+                "showDescription": true,
+                "description": "Fact value minus silver value (G03)."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(gold_value_gap)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "condition": {
+                          "operator": ">",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          }
+                        },
+                        "color": "#D03B3B"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "rows_by_layer",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "layer_counts",
+                  "fields": [
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "sum(row_count)",
+                      "expression": "SUM(`row_count`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows per layer",
+                "showDescription": true,
+                "description": "Silver plus quarantine equals bronze; the gold fact equals silver."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "table_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "bronze_orders",
+                        "silver_orders",
+                        "silver_orders_quarantine",
+                        "fct_order_line"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(row_count)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "axis": {
+                    "title": "Rows"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              },
+              "mark": {
+                "colors": [
+                  "#2A78D6"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "value_by_layer",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "layer_counts",
+                  "fields": [
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "sum(order_value)",
+                      "expression": "SUM(`order_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Order value per layer (EUR)",
+                "showDescription": true,
+                "description": "Same reconciliation in value."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "table_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "bronze_orders",
+                        "silver_orders",
+                        "silver_orders_quarantine",
+                        "fct_order_line"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(order_value)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "EUR"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              },
+              "mark": {
+                "colors": [
+                  "#2A78D6"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "quarantine_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "quarantine_reasons",
+                  "fields": [
+                    {
+                      "name": "reason",
+                      "expression": "`reason`"
+                    },
+                    {
+                      "name": "row_count",
+                      "expression": "`row_count`"
+                    },
+                    {
+                      "name": "order_value",
+                      "expression": "`order_value`"
+                    },
+                    {
+                      "name": "first_order_date",
+                      "expression": "`first_order_date`"
+                    },
+                    {
+                      "name": "last_order_date",
+                      "expression": "`last_order_date`"
+                    },
+                    {
+                      "name": "min_raw_date",
+                      "expression": "`min_raw_date`"
+                    },
+                    {
+                      "name": "max_raw_date",
+                      "expression": "`max_raw_date`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Quarantine by reason",
+                "showDescription": true,
+                "description": "Rows that broke R02 (date) or R03 (quantity). Raw dates are the source integers; a NULL order date means the integer was not a real date."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "reason",
+                    "displayName": "Rule that quarantined"
+                  },
+                  {
+                    "fieldName": "row_count",
+                    "displayName": "Rows",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "order_value",
+                    "displayName": "Order value (EUR)",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "first_order_date",
+                    "displayName": "First order date",
+                    "format": {
+                      "type": "date",
+                      "date": "year-month-day"
+                    }
+                  },
+                  {
+                    "fieldName": "last_order_date",
+                    "displayName": "Last order date",
+                    "format": {
+                      "type": "date",
+                      "date": "year-month-day"
+                    }
+                  },
+                  {
+                    "fieldName": "min_raw_date",
+                    "displayName": "Lowest raw date",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "max_raw_date",
+                    "displayName": "Highest raw date",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 12,
+            "height": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags",
+      "displayName": "4 - Flagged lines by year",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "intro_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Which lines carry a flag?\n\nFlags keep the line in silver with a boolean column (R04: zero or negative value); alerts only report (R06: channel unknown, R07: placeholder segment). The legacy order series is a flag with no rule. Shares are per order year."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "flag_share_lines",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "flags_by_year_long",
+                  "fields": [
+                    {
+                      "name": "year_label",
+                      "expression": "`year_label`"
+                    },
+                    {
+                      "name": "sum(pct)",
+                      "expression": "SUM(`pct`)"
+                    },
+                    {
+                      "name": "metric",
+                      "expression": "`metric`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "frame": {
+                "showTitle": true,
+                "title": "Share of lines with a flag or alert, by order year (%)",
+                "showDescription": true,
+                "description": "Unknown channel is the one to watch: it is a labelling problem, not customer behaviour."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "year_label",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Order year"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(pct)",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
+                  },
+                  "axis": {
+                    "title": "% of lines"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "metric",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Zero value (R04)",
+                        "color": "#2A78D6"
+                      },
+                      {
+                        "value": "Negative value (R04)",
+                        "color": "#EB6834"
+                      },
+                      {
+                        "value": "Unknown channel (R06)",
+                        "color": "#1BAF7A"
+                      },
+                      {
+                        "value": "Placeholder segment (R07)",
+                        "color": "#EDA100"
+                      },
+                      {
+                        "value": "Legacy order series",
+                        "color": "#898781"
+                      }
+                    ]
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 12,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "flags_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "flags_by_year",
+                  "fields": [
+                    {
+                      "name": "year",
+                      "expression": "`year`"
+                    },
+                    {
+                      "name": "lines",
+                      "expression": "`lines`"
+                    },
+                    {
+                      "name": "zero_value_lines",
+                      "expression": "`zero_value_lines`"
+                    },
+                    {
+                      "name": "zero_value_pct",
+                      "expression": "`zero_value_pct`"
+                    },
+                    {
+                      "name": "negative_value_lines",
+                      "expression": "`negative_value_lines`"
+                    },
+                    {
+                      "name": "negative_value_pct",
+                      "expression": "`negative_value_pct`"
+                    },
+                    {
+                      "name": "unknown_channel_lines",
+                      "expression": "`unknown_channel_lines`"
+                    },
+                    {
+                      "name": "unknown_channel_pct",
+                      "expression": "`unknown_channel_pct`"
+                    },
+                    {
+                      "name": "placeholder_segment_lines",
+                      "expression": "`placeholder_segment_lines`"
+                    },
+                    {
+                      "name": "placeholder_segment_pct",
+                      "expression": "`placeholder_segment_pct`"
+                    },
+                    {
+                      "name": "legacy_series_lines",
+                      "expression": "`legacy_series_lines`"
+                    },
+                    {
+                      "name": "legacy_series_pct",
+                      "expression": "`legacy_series_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Flagged lines by year",
+                "showDescription": true,
+                "description": "Counts and shares of silver_orders lines per order year."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "year",
+                    "displayName": "Year"
+                  },
+                  {
+                    "fieldName": "lines",
+                    "displayName": "Lines",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "zero_value_lines",
+                    "displayName": "Zero value",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "zero_value_pct",
+                    "displayName": "%",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "negative_value_lines",
+                    "displayName": "Negative value",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "negative_value_pct",
+                    "displayName": "%",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "unknown_channel_lines",
+                    "displayName": "Unknown channel",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "unknown_channel_pct",
+                    "displayName": "%",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "placeholder_segment_lines",
+                    "displayName": "Placeholder segment",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "placeholder_segment_pct",
+                    "displayName": "%",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "legacy_series_lines",
+                    "displayName": "Legacy series",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "legacy_series_pct",
+                    "displayName": "%",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ]
+    },
+    {
+      "name": "runs",
+      "displayName": "5 - Job runs",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "intro_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## How did the job run?\n\nRuns and tasks of the Linde ETL job from the Jobs API, and what each run wrote, from the Delta history of every table. Refreshed by 05_ops_snapshot; runs are kept after the API forgets them."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_runs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "run_stats",
+                  "fields": [
+                    {
+                      "name": "sum(runs)",
+                      "expression": "SUM(`runs`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Runs recorded",
+                "showDescription": true,
+                "description": "Finished runs kept by 05_ops_snapshot."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(runs)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_avg_duration",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "run_stats",
+                  "fields": [
+                    {
+                      "name": "sum(avg_duration_min)",
+                      "expression": "SUM(`avg_duration_min`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Average duration (min)",
+                "showDescription": true,
+                "description": "End minus start, as the Jobs page shows it."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(avg_duration_min)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_rows_written",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "latest_run",
+                  "fields": [
+                    {
+                      "name": "sum(rows_written)",
+                      "expression": "SUM(`rows_written`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows written, latest run",
+                "showDescription": true,
+                "description": "Sum of the rows written by every commit of the run. Matches the Jobs page."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(rows_written)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_unattributed",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "history_summary",
+                  "fields": [
+                    {
+                      "name": "sum(unattributed_commits)",
+                      "expression": "SUM(`unattributed_commits`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Commits outside any run",
+                "showDescription": true,
+                "description": "Delta commits made while no job task was running: notebooks run by hand, or runs older than the API window."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(unattributed_commits)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "duration_by_run",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "runs",
+                  "fields": [
+                    {
+                      "name": "run_label",
+                      "expression": "`run_label`"
+                    },
+                    {
+                      "name": "sum(duration_min)",
+                      "expression": "SUM(`duration_min`)"
+                    },
+                    {
+                      "name": "result_state",
+                      "expression": "`result_state`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Duration per run (min)",
+                "showDescription": true,
+                "description": "Colour is the result of the run."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "run_label",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Run start"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(duration_min)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Minutes"
+                  }
+                },
+                "color": {
+                  "fieldName": "result_state",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "SUCCESS",
+                        "color": "#0CA30C"
+                      },
+                      {
+                        "value": "FAILED",
+                        "color": "#D03B3B"
+                      },
+                      {
+                        "value": "TIMEDOUT",
+                        "color": "#EC835A"
+                      },
+                      {
+                        "value": "CANCELED",
+                        "color": "#898781"
+                      },
+                      {
+                        "value": "RUNNING",
+                        "color": "#898781"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "task_duration_by_run",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "task_runs",
+                  "fields": [
+                    {
+                      "name": "run_label",
+                      "expression": "`run_label`"
+                    },
+                    {
+                      "name": "sum(duration_min)",
+                      "expression": "SUM(`duration_min`)"
+                    },
+                    {
+                      "name": "task_key",
+                      "expression": "`task_key`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Task duration per run (min)",
+                "showDescription": true,
+                "description": "One segment per task, in the order they ran."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "run_label",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Run start"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(duration_min)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Minutes"
+                  }
+                },
+                "color": {
+                  "fieldName": "task_key",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "rows_written_by_run",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "rows_by_run",
+                  "fields": [
+                    {
+                      "name": "run_label",
+                      "expression": "`run_label`"
+                    },
+                    {
+                      "name": "sum(rows_written)",
+                      "expression": "SUM(`rows_written`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows written per run",
+                "showDescription": true,
+                "description": "A run of all four tasks rewrites silver and gold; a run that finds nothing new writes less."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "run_label",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Run start"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(rows_written)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "axis": {
+                    "title": "Rows"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              },
+              "mark": {
+                "colors": [
+                  "#1BAF7A"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "runs_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "runs",
+                  "fields": [
+                    {
+                      "name": "run_label",
+                      "expression": "`run_label`"
+                    },
+                    {
+                      "name": "result_state",
+                      "expression": "`result_state`"
+                    },
+                    {
+                      "name": "duration_min",
+                      "expression": "`duration_min`"
+                    },
+                    {
+                      "name": "task_count",
+                      "expression": "`task_count`"
+                    },
+                    {
+                      "name": "trigger",
+                      "expression": "`trigger`"
+                    },
+                    {
+                      "name": "run_page_url",
+                      "expression": "`run_page_url`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Runs",
+                "showDescription": true,
+                "description": "Newest last. The run page link opens the Jobs UI."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "run_label",
+                    "displayName": "Started"
+                  },
+                  {
+                    "fieldName": "result_state",
+                    "displayName": "Result",
+                    "style": {
+                      "type": "basic",
+                      "rules": [
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "SUCCESS"
+                            },
+                            "fieldName": "result_state"
+                          },
+                          "foregroundColor": "#006300"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "FAILED"
+                            },
+                            "fieldName": "result_state"
+                          },
+                          "backgroundColor": "#D03B3B",
+                          "foregroundColor": "#FFFFFF"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "TIMEDOUT"
+                            },
+                            "fieldName": "result_state"
+                          },
+                          "backgroundColor": "#EC835A",
+                          "foregroundColor": "#FFFFFF"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "CANCELED"
+                            },
+                            "fieldName": "result_state"
+                          },
+                          "foregroundColor": "#898781"
+                        },
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "RUNNING"
+                            },
+                            "fieldName": "result_state"
+                          },
+                          "foregroundColor": "#898781"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "fieldName": "duration_min",
+                    "displayName": "Minutes",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 1
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "task_count",
+                    "displayName": "Tasks",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "trigger",
+                    "displayName": "Trigger"
+                  },
+                  {
+                    "fieldName": "run_page_url",
+                    "displayName": "Run page",
+                    "link": {
+                      "templatedURL": "{{@}}"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 14,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "commits_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "commits_latest_run",
+                  "fields": [
+                    {
+                      "name": "commit_ts",
+                      "expression": "`commit_ts`"
+                    },
+                    {
+                      "name": "task_key",
+                      "expression": "`task_key`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "operation",
+                      "expression": "`operation`"
+                    },
+                    {
+                      "name": "version",
+                      "expression": "`version`"
+                    },
+                    {
+                      "name": "rows_written",
+                      "expression": "`rows_written`"
+                    },
+                    {
+                      "name": "files_written",
+                      "expression": "`files_written`"
+                    },
+                    {
+                      "name": "mb_written",
+                      "expression": "`mb_written`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "What the latest run wrote",
+                "showDescription": true,
+                "description": "Every Delta commit attributed to the latest run, in order."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "commit_ts",
+                    "displayName": "Committed at",
+                    "format": {
+                      "type": "date-time",
+                      "date": "year-month-day",
+                      "time": "hour-minute"
+                    }
+                  },
+                  {
+                    "fieldName": "task_key",
+                    "displayName": "Task"
+                  },
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Layer"
+                  },
+                  {
+                    "fieldName": "table_name",
+                    "displayName": "Table"
+                  },
+                  {
+                    "fieldName": "operation",
+                    "displayName": "Operation"
+                  },
+                  {
+                    "fieldName": "version",
+                    "displayName": "Version",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "rows_written",
+                    "displayName": "Rows written",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "files_written",
+                    "displayName": "Files",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "mb_written",
+                    "displayName": "MB",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ]
+    },
+    {
+      "name": "tables",
+      "displayName": "6 - Tables and governance",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "intro_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## What exists, and is it documented?\n\nEvery table the pipeline writes, as of the last snapshot, and the comment coverage read from information_schema. The data dictionary is generated from these comments, so coverage should stay at 100%."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_tables",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "inventory_summary",
+                  "fields": [
+                    {
+                      "name": "sum(tables)",
+                      "expression": "SUM(`tables`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Tables tracked",
+                "showDescription": true,
+                "description": "Every table the pipeline writes, as of the last snapshot."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(tables)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_total_rows",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "inventory_summary",
+                  "fields": [
+                    {
+                      "name": "sum(total_rows)",
+                      "expression": "SUM(`total_rows`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Rows across all tables",
+                "showDescription": true,
+                "description": "Sum of the row counts at snapshot time."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_rows)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_total_size",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "inventory_summary",
+                  "fields": [
+                    {
+                      "name": "sum(total_size_mb)",
+                      "expression": "SUM(`total_size_mb`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Total size (MB)",
+                "showDescription": true,
+                "description": "Current version of every table, data files only."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_size_mb)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_comment_coverage",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "governance_summary",
+                  "fields": [
+                    {
+                      "name": "sum(column_comment_pct)",
+                      "expression": "SUM(`column_comment_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Column comment coverage",
+                "showDescription": true,
+                "description": "Columns with a comment, from information_schema. Target: 100%."
+              },
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(column_comment_pct)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "fontSize": 32,
+                    "rules": [
+                      {
+                        "condition": {
+                          "operator": "<",
+                          "operand": {
+                            "type": "data-value",
+                            "value": "100"
+                          }
+                        },
+                        "color": "#EC835A"
+                      }
+                    ]
+                  },
+                  "formatTemplate": "{{ @formatted }}%"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 2,
+            "width": 3,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "coverage_by_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "comment_coverage",
+                  "fields": [
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "sum(column_comment_pct)",
+                      "expression": "SUM(`column_comment_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "frame": {
+                "showTitle": true,
+                "title": "Column comment coverage by table (%)",
+                "showDescription": true,
+                "description": "Anything under 100% is a column without a comment."
+              },
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(column_comment_pct)",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "type": "custom",
+                      "min": 0,
+                      "max": 100
+                    }
+                  },
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "% of columns"
+                  }
+                },
+                "y": {
+                  "fieldName": "table_name",
+                  "scale": {
+                    "type": "categorical",
+                    "categorySize": {
+                      "type": "number-of-categories",
+                      "number": 24
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              },
+              "mark": {
+                "colors": [
+                  "#2A78D6"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 5,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "inventory_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "inventory",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "role",
+                      "expression": "`role`"
+                    },
+                    {
+                      "name": "row_count",
+                      "expression": "`row_count`"
+                    },
+                    {
+                      "name": "num_files",
+                      "expression": "`num_files`"
+                    },
+                    {
+                      "name": "size_mb",
+                      "expression": "`size_mb`"
+                    },
+                    {
+                      "name": "last_modified",
+                      "expression": "`last_modified`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Table inventory",
+                "showDescription": true,
+                "description": "From DESCRIBE DETAIL plus a row count, at snapshot time."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Layer"
+                  },
+                  {
+                    "fieldName": "table_name",
+                    "displayName": "Table"
+                  },
+                  {
+                    "fieldName": "role",
+                    "displayName": "Role"
+                  },
+                  {
+                    "fieldName": "row_count",
+                    "displayName": "Rows",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "num_files",
+                    "displayName": "Files",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "size_mb",
+                    "displayName": "MB",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "last_modified",
+                    "displayName": "Last modified",
+                    "format": {
+                      "type": "date-time",
+                      "date": "year-month-day",
+                      "time": "hour-minute"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 6,
+            "width": 7,
+            "height": 9
+          }
+        },
+        {
+          "widget": {
+            "name": "coverage_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "comment_coverage",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "table_comment",
+                      "expression": "`table_comment`"
+                    },
+                    {
+                      "name": "columns",
+                      "expression": "`columns`"
+                    },
+                    {
+                      "name": "commented_columns",
+                      "expression": "`commented_columns`"
+                    },
+                    {
+                      "name": "missing_comments",
+                      "expression": "`missing_comments`"
+                    },
+                    {
+                      "name": "column_comment_pct",
+                      "expression": "`column_comment_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "frame": {
+                "showTitle": true,
+                "title": "Comments per table",
+                "showDescription": true,
+                "description": "Read from information_schema.tables and information_schema.columns."
+              },
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Layer"
+                  },
+                  {
+                    "fieldName": "table_name",
+                    "displayName": "Table"
+                  },
+                  {
+                    "fieldName": "table_comment",
+                    "displayName": "Table comment",
+                    "style": {
+                      "type": "basic",
+                      "rules": [
+                        {
+                          "condition": {
+                            "operator": "=",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "No"
+                            },
+                            "fieldName": "table_comment"
+                          },
+                          "backgroundColor": "#FAB219",
+                          "foregroundColor": "#0B0B0B"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "fieldName": "columns",
+                    "displayName": "Columns",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "commented_columns",
+                    "displayName": "With a comment",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    }
+                  },
+                  {
+                    "fieldName": "missing_comments",
+                    "displayName": "Missing",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 0
+                      }
+                    },
+                    "style": {
+                      "type": "basic",
+                      "rules": [
+                        {
+                          "condition": {
+                            "operator": ">",
+                            "operand": {
+                              "type": "data-value",
+                              "value": "0"
+                            },
+                            "fieldName": "missing_comments"
+                          },
+                          "backgroundColor": "#FAB219",
+                          "foregroundColor": "#0B0B0B"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "fieldName": "column_comment_pct",
+                    "displayName": "Coverage (%)",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 12,
+            "height": 7
+          }
+        }
+      ]
     }
   ],
   "uiSettings": {
     "theme": {
-      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+      "canvasBackgroundColor": {
+        "light": "#F1F1EE",
+        "dark": "#0D0D0D"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FCFCFB",
+        "dark": "#1A1A19"
+      },
+      "widgetBorderColor": {
+        "light": "#E6E5DF",
+        "dark": "#2C2C2A"
+      },
+      "fontColor": {
+        "light": "#0B0B0B",
+        "dark": "#F0EFEC"
+      },
+      "selectionColor": {
+        "light": "#2A78D6",
+        "dark": "#3987E5"
+      },
+      "visualizationColors": [
+        "#2A78D6",
+        "#EB6834",
+        "#1BAF7A",
+        "#EDA100",
+        "#E87BA4",
+        "#008300",
+        "#6250D6",
+        "#E34948"
+      ],
+      "widgetHeaderAlignment": "LEFT",
+      "widgetCornerRadius": 8,
+      "widgetPadding": 16,
+      "widgetMargin": 8,
+      "gridLineColor": {
+        "light": "#E1E0D9",
+        "dark": "#2C2C2A"
+      },
+      "axisLineColor": {
+        "light": "#C3C2B7",
+        "dark": "#383835"
+      },
+      "fontSettings": {
+        "base": {
+          "fontSize": 14,
+          "fontWeight": 400,
+          "fontColor": {
+            "light": "#0B0B0B",
+            "dark": "#F0EFEC"
+          }
+        },
+        "widgetTitle": {
+          "fontSize": 15,
+          "fontWeight": 600
+        },
+        "widgetDescription": {
+          "fontSize": 13,
+          "fontWeight": 400,
+          "fontColor": {
+            "light": "#52514E",
+            "dark": "#C3C2B7"
+          }
+        },
+        "fieldTitle": {
+          "fontSize": 12,
+          "fontWeight": 500,
+          "fontColor": {
+            "light": "#52514E",
+            "dark": "#C3C2B7"
+          }
+        },
+        "fieldValue": {
+          "fontSize": 12,
+          "fontWeight": 400,
+          "fontColor": {
+            "light": "#52514E",
+            "dark": "#C3C2B7"
+          }
+        }
+      }
     },
     "applyModeEnabled": false
   }
